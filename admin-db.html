@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HFC Admin Backend</title>
+  <style>
+    body{font-family:Inter,system-ui,sans-serif;background:#0f172a;color:#e2e8f0;margin:0}
+    .wrap{max-width:980px;margin:0 auto;padding:24px}
+    .card{background:#111827;border:1px solid #334155;border-radius:18px;padding:20px;margin-bottom:18px}
+    input,textarea,button,select{width:100%;border-radius:12px;border:1px solid #475569;background:#0b1220;color:#e2e8f0;padding:12px;font:inherit}
+    textarea{min-height:220px;resize:vertical}
+    button{cursor:pointer;background:#2563eb;border-color:#2563eb;font-weight:700}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    .muted{color:#94a3b8;font-size:.95rem}
+    pre{white-space:pre-wrap;word-break:break-word;background:#020617;padding:16px;border-radius:12px;border:1px solid #334155}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>HFC Admin Backend</h1>
+    <p class="muted">This is your database-only backend console. It talks to Firebase using the Admin SDK, not the browser SDK.</p>
+
+    <div class="card">
+      <h2>Login</h2>
+      <input id="pin" type="password" placeholder="Backend admin PIN" />
+      <div style="height:12px"></div>
+      <button id="loginBtn">Login</button>
+    </div>
+
+    <div class="card">
+      <h2>Database Access</h2>
+      <div class="row">
+        <div>
+          <label>Path</label>
+          <input id="path" placeholder="Example: users or balances/jdoe" />
+        </div>
+        <div>
+          <label>Action</label>
+          <select id="method">
+            <option value="GET">GET</option>
+            <option value="PUT">PUT</option>
+            <option value="PATCH">PATCH</option>
+            <option value="DELETE">DELETE</option>
+          </select>
+        </div>
+      </div>
+      <div style="height:16px"></div>
+      <label>JSON body for PUT/PATCH</label>
+      <textarea id="payload">{
+  "value": {}
+}</textarea>
+      <div style="height:12px"></div>
+      <button id="runBtn">Run Request</button>
+    </div>
+
+    <div class="card">
+      <h2>Response</h2>
+      <pre id="result">Not run yet.</pre>
+    </div>
+  </div>
+  <script src="/static/admin-db.js"></script>
+</body>
+</html>

@@ -1,46 +1,77 @@
-# Home Financial Center
+# HFC Admin Backend
 
-This version keeps the exact filenames:
+This folder is ready to put into a GitHub repository.
 
-- `index.html`
-- `script.js`
-- `account.html`
-- `account.js`
+## What this backend is for
 
-## What was added
+This is the private admin/database backend for your HFC system. It connects to Firebase Realtime Database with the Firebase Admin SDK so the browser does not need direct database admin access.
 
-- stronger glass / iPhone-style visual treatment
-- more hover, rise, shimmer, and ambient background animation
-- admin treasury reserve that can fund any user checking or bill-vault balance
-- system-generated account numbers for clients
-- user bill vault for money set aside to pay bills
-- user private bill planner under `privateBills/{userId}`
-- automatic totals for shared bills, private bills, and bill-vault coverage
-- paying shared bills from the bill vault
-- paying private bills from the bill vault
-- account windows for:
-  - checking
-  - bill vault
-  - shared bills
-  - private bills
-  - admin treasury
-  - admin totals
-  - client overview
+## What to commit to GitHub
 
-## Database paths
+Commit these files:
 
-- `users/`
-- `balances/`
-- `bills/` for shared bills visible to treasury
-- `privateBills/{userId}/` for user planner bills
-- `ledger/`
-- `system/treasury/reserve`
+- `server.js`
+- `package.json`
+- `public/admin-db.html`
+- `public/admin-db.js`
+- `.env.example`
+- `.gitignore`
+- `README.md`
 
-## Important note about privacy
+Do **not** commit:
 
-Private bills are separated in the app and not shown in admin windows, but this is still a client-side Firebase app. Real privacy requires Firebase Database Rules or server-side enforcement.
+- `.env`
+- your Firebase service account JSON
+- any real secrets or production PINs
 
-## Current admin login
+## Local setup
 
-- username: `admin`
-- pin: `0000`
+1. Copy `.env.example` to `.env`
+2. Fill in your real values
+3. Install dependencies
+4. Start the server
+
+```bash
+npm install
+npm run dev
+```
+
+Then open:
+
+```bash
+http://localhost:3000/backend
+```
+
+## Environment variables
+
+- `PORT` - backend port
+- `BACKEND_ADMIN_PIN` - login PIN for the backend console
+- `SESSION_SECRET` - session secret for cookies/sessions
+- `FIREBASE_DATABASE_URL` - your Firebase RTDB URL
+- `FIREBASE_SERVICE_ACCOUNT_BASE64` - base64 of the Firebase service account JSON
+
+## GitHub workflow
+
+Typical flow:
+
+```bash
+git init
+git add .
+git commit -m "Add HFC admin backend"
+git branch -M main
+git remote add origin YOUR_GITHUB_REPO_URL
+git push -u origin main
+```
+
+## Important
+
+This backend is the right place for:
+
+- treasury actions
+- admin-only balance adjustments
+- user open/close/delete
+- account number generation
+- audit logging
+- database-only tools
+
+Your public frontend should eventually call this backend for privileged admin actions instead of writing those paths directly from the browser.
