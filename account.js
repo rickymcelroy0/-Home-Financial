@@ -4,228 +4,214 @@ const firebaseConfig = {
   authDomain: 'homefund-3b81a.firebaseapp.com',
   storageBucket: 'homefund-3b81a.appspot.com'
 };
-
 if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 const params = new URLSearchParams(window.location.search);
 const kind = params.get('kind') || 'checking';
 const userId = params.get('user') || 'admin';
+const sessionUser = localStorage.getItem('hfc_session_v3') || 'admin';
 
-// FIXED: Now tracks all 8 top-level nodes
-const state = {
-  users: {},
-  balances: {},
-  bills: {},
-  ledger: {},
-  loans: {},
-  logs: {},
-  masterBankLedger: {},
-  system: {}
-};
+let users = {}, balances = {}, bills = {}, privateBills = {}, ledger = {}, system = { treasury: { reserve: 0 } };
 
-function money(n){ return new Intl.NumberFormat('en-US', { style:'currency', currency:'USD' }).format(Number(n || 0)); }
-function escapeHtml(value){ return String(value ?? '').replace(/[&<>'"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;' }[c])); }
-function getUser(id){ return state.users[id] || { name:id, role:id === 'admin' ? 'admin' : 'client', status:'active' }; }
-function getBalance(id){ return { personal:Number(state.balances[id]?.personal || 0), staging:Number(state.balances[id]?.staging || 0) }; }
-function allBills(){ return Object.entries(state.bills).map(([id, bill]) => ({ id, ...bill })); }
-function billsForUser(id){ return allBills().filter(bill => bill.userId === id); }
-function openBillsForUser(id){ return billsForUser(id).filter(bill => bill.status !== 'paid'); }
-function paidBillsForUser(id){ return billsForUser(id).filter(bill => bill.status === 'paid'); }
-function ledgerForUser(id){
-  return Object.entries(state.ledger)
-  .map(([id2, item]) => ({ id:id2, ...item }))
-  .filter(item => item.userId === id)
-  .sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-}
+const money = (n) => new Intl.NumberFormat('en-US', { style:'currency', currency:'USD' }).format(Number(n || 0));
+const number = (n) => Number(Number(n || 0).toFixed(2));
+const sortNewest = (arr) => [...arr].sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+const ledgerItemsForUser = (uid) => sortNewest(Object.values(ledger).filter((x) => x.userId === uid));
+const openBillsForUser = (uid) => Object.entries(bills).filter(([_,b]) => b.userId === uid && b.status === 'open');
+const paidBillsForUser = (uid) => Object.entries(bills).filter(([_,b]) => b.userId === uid && b.status === 'paid');
+const openPrivateBillsForUser = (uid) => Object.entries(privateBills[uid] || {}).filter(([_,b]) => b.status === 'open');
+const paidPrivateBillsForUser = (uid) => Object.entries(privateBills[uid] || {}).filter(([_,b]) => b.status === 'paid');
+const isAdmin = () => users[sessionUser]?.role === 'admin';
+
 function renderSummary(cards){
-  document.getElementById('summary-row').innerHTML = cards.map(card => `
-  <div class="col-md-4">
-  <div class="glass p-4 h-100">
-  <div class="label">${escapeHtml(card.label)}</div>
-  <div class="metric mt-2">${escapeHtml(card.value)}</div>
-  </div>
-  </div>`).join('');
-}
-function renderTable(headers, rows){
-  return `
-  <div class="table-responsive">
-  <table class="table align-middle mb-0">
-  <thead><tr>${headers.map(h => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead>
-  <tbody>${rows.length ? rows.join('') : `<tr><td colspan="${headers.length}" class="text-muted">No records.</td></tr>`}</tbody>
-  </table>
-  </div>`;
+  document.getElementById('summary-row').innerHTML = cards.map((card) => `
+    <div class="col-md-4">
+      <div class="glass p-4 h-100">
+        <div class="label">${card.label}</div>
+        <h3 class="mt-2 mb-0">${card.value}</h3>
+      </div>
+    </div>`).join('');
 }
 function renderLedger(items){
   const pane = document.getElementById('ledger-pane');
-  if (!items.length) {
-    pane.innerHTML = '<div class="text-muted">No activity yet.</div>';
-    return;
-  }
-  pane.innerHTML = items.slice(0, 20).map(item => `
-  <div class="list-row">
-  <div class="d-flex justify-content-between gap-3 align-items-start">
-  <div>
-  <div class="fw-semibold">${escapeHtml(item.title || 'Activity')}</div>
-  <div class="text-muted small">${escapeHtml(item.description || '')}</div>
-  </div>
-  <div class="text-end">
-  <div class="fw-semibold">${item.amount != null ? money(item.amount) : ''}</div>
-  <div class="text-muted small">${new Date(item.createdAt || Date.now()).toLocaleString()}</div>
-  </div>
-  </div>
-  </div>`).join('');
+  if (!items.length) { pane.innerHTML = '<div class="text-muted">No activity yet.</div>'; return; }
+  pane.innerHTML = items.slice(0,20).map((item) => `
+    <div class="list-row">
+      <div><div class="fw-semibold">${item.title || 'Activity'}</div><div class="text-muted small">${item.description || ''}</div></div>
+      <div class="text-end"><div class="fw-semibold">${item.amount != null ? money(item.amount) : ''}</div><div class="text-muted small">${new Date(item.createdAt || Date.now()).toLocaleString()}</div></div>
+    </div>`).join('');
 }
+function renderTable(headers, rows){
+  return `<div class="table-responsive"><table class="table align-middle mb-0"><thead><tr>${headers.map((h) => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.length ? rows.join('') : `<tr><td colspan="${headers.length}" class="text-muted">No records.</td></tr>`}</tbody></table></div>`;
+}
+
+async function debitBillVault(uid, amount){
+  const result = await db.ref(`balances/${uid}/staging`).transaction((cur) => {
+    cur = number(cur);
+    if (cur < amount) return;
+    return number(cur - amount);
+  });
+  return result.committed;
+}
+async function writeLedger(entry){ return db.ref('ledger').push({ createdAt: new Date().toISOString(), ...entry }); }
+
+async function payBill(billId){
+  const bill = bills[billId];
+  if (!bill || bill.status !== 'open') return alert('Bill is not open.');
+  if (!isAdmin() && sessionUser !== bill.userId) return alert('You cannot pay this bill.');
+  const amount = number(bill.amount);
+  if (!await debitBillVault(bill.userId, amount)) return alert('Not enough money in the bill vault.');
+  await db.ref(`bills/${billId}`).update({ status:'paid', paidAt:new Date().toISOString(), paidBy: sessionUser });
+  await writeLedger({ type:'bill_paid', userId: bill.userId, amount, title:'Shared bill paid', description:`${bill.name} paid from bill vault by ${users[sessionUser]?.name || sessionUser}.` });
+}
+window.payBill = payBill;
+
+async function payPrivateBill(billId){
+  if (sessionUser !== userId) return alert('Only the account owner can pay this private bill.');
+  const bill = (privateBills[userId] || {})[billId];
+  if (!bill || bill.status !== 'open') return alert('Private bill is not open.');
+  const amount = number(bill.amount);
+  if (!await debitBillVault(userId, amount)) return alert('Not enough money in the bill vault.');
+  await db.ref(`privateBills/${userId}/${billId}`).update({ status:'paid', paidAt:new Date().toISOString() });
+  await writeLedger({ type:'private_bill_paid', userId, amount, title:'Private bill paid', description:`${bill.name} paid from the bill vault.` });
+}
+window.payPrivateBill = payPrivateBill;
 
 function render(){
+  const user = users[userId] || { name:userId, role:'unknown', accountNumber:'—', status:'unknown' };
+  const userBals = balances[userId] || { personal:0, staging:0 };
   const detail = document.getElementById('detail-pane');
   const subtitle = document.getElementById('window-subtitle');
-  const user = getUser(userId);
-  const balance = getBalance(userId);
-  const openBills = openBillsForUser(userId);
-  const paidBills = paidBillsForUser(userId);
-  const openBillTotal = openBills.reduce((sum, bill) => sum + Number(bill.amount || 0), 0);
-  const ledgerItems = ledgerForUser(userId);
+  const actionBtn = document.getElementById('action-btn');
+  actionBtn.classList.add('d-none');
 
-  if (kind === 'checking') {
+  if (kind === 'checking'){
     document.getElementById('window-title').textContent = `${user.name} · Checking`;
-    subtitle.textContent = 'Available cash in checking, plus incoming and outgoing movement.';
+    subtitle.textContent = `Account ${user.accountNumber || '—'}`;
     renderSummary([
-      { label:'Checking Balance', value: money(balance.personal) },
-                  { label:'Open Bills', value: money(openBillTotal) },
-                  { label:'Paid Bills', value: String(paidBills.length) }
+      { label:'Checking Balance', value: money(userBals.personal) },
+      { label:'Shared Bills Due', value: money(openBillsForUser(userId).reduce((s,[_,b]) => s + number(b.amount), 0)) },
+      { label:'Private Bills Due', value: money(openPrivateBillsForUser(userId).reduce((s,[_,b]) => s + number(b.amount), 0)) }
     ]);
-    detail.innerHTML = `<p class="text-muted mb-3">This pane focuses on checking cash and funding activity.</p>` +
-    renderTable(['Type','Description','Amount','When'], ledgerItems.filter(item => ['deposit','transfer','client_created'].includes(item.type)).map(item =>
-    `<tr><td>${escapeHtml(item.title || item.type)}</td><td>${escapeHtml(item.description || '')}</td><td>${item.amount != null ? money(item.amount) : ''}</td><td>${new Date(item.createdAt || Date.now()).toLocaleString()}</td></tr>`));
-    renderLedger(ledgerItems);
+    detail.innerHTML = `<div class="mb-3 text-muted">Checking holds available funds before you move them into the bill vault.</div>` + renderTable(['Type','Description','Amount','When'], ledgerItemsForUser(userId).filter((x) => ['client_created','treasury_transfer','transfer'].includes(x.type)).slice(0,15).map((item) => `<tr><td>${item.title || item.type}</td><td>${item.description || ''}</td><td>${item.amount != null ? money(item.amount) : ''}</td><td>${new Date(item.createdAt || Date.now()).toLocaleString()}</td></tr>`));
+    renderLedger(ledgerItemsForUser(userId));
     return;
   }
 
-  if (kind === 'staging') {
-    document.getElementById('window-title').textContent = `${user.name} · Bill Staging`;
-    subtitle.textContent = 'Reserved funds for invoices waiting to be paid.';
+  if (kind === 'staging'){
+    document.getElementById('window-title').textContent = `${user.name} · Bill Vault`;
+    subtitle.textContent = 'Reserved funds for shared and private bills';
     renderSummary([
-      { label:'Staging Balance', value: money(balance.staging) },
-                  { label:'Open Bills', value: String(openBills.length) },
-                  { label:'Coverage Delta', value: money(balance.staging - openBillTotal) }
+      { label:'Bill Vault', value: money(userBals.staging) },
+      { label:'Shared Due', value: money(openBillsForUser(userId).reduce((s,[_,b]) => s + number(b.amount), 0)) },
+      { label:'Private Due', value: money(openPrivateBillsForUser(userId).reduce((s,[_,b]) => s + number(b.amount), 0)) }
     ]);
-    detail.innerHTML = `<p class="text-muted mb-3">Staging holds reserved funds for bills and outgoing obligations.</p>` +
-    renderTable(['Bill','Due Date','Amount','Status'], openBills.map(bill =>
-    `<tr><td>${escapeHtml(bill.name)}</td><td>${escapeHtml(bill.dueDate || '—')}</td><td>${money(bill.amount)}</td><td>${escapeHtml(bill.status)}</td></tr>`));
-    renderLedger(ledgerItems.filter(item => ['transfer','bill_paid','bill_created'].includes(item.type)));
+    detail.innerHTML = `<div class="mb-3 text-muted">The bill vault is the internal account used to pay bills and track bill readiness automatically.</div>` + renderTable(['Bucket','Amount'], [
+      `<tr><td>Current bill vault</td><td>${money(userBals.staging)}</td></tr>`,
+      `<tr><td>Shared bills total</td><td>${money(openBillsForUser(userId).reduce((s,[_,b]) => s + number(b.amount), 0))}</td></tr>`,
+      `<tr><td>Private bills total</td><td>${money(openPrivateBillsForUser(userId).reduce((s,[_,b]) => s + number(b.amount), 0))}</td></tr>`,
+      `<tr><td>Coverage after all open bills</td><td>${money(number(userBals.staging) - openBillsForUser(userId).reduce((s,[_,b]) => s + number(b.amount), 0) - openPrivateBillsForUser(userId).reduce((s,[_,b]) => s + number(b.amount), 0))}</td></tr>`
+    ]);
+    renderLedger(ledgerItemsForUser(userId).filter((x) => ['transfer','bill_paid','private_bill_paid','treasury_transfer'].includes(x.type)));
     return;
   }
 
-  if (kind === 'bills') {
-    document.getElementById('window-title').textContent = `${user.name} · Bills`;
-    subtitle.textContent = 'Open and paid invoice detail for this account.';
+  if (kind === 'bills'){
+    document.getElementById('window-title').textContent = `${user.name} · Shared Bills`;
+    subtitle.textContent = 'Treasury-visible bill queue';
     renderSummary([
-      { label:'Open Bill Total', value: money(openBillTotal) },
-                  { label:'Open Bills', value: String(openBills.length) },
-                  { label:'Paid Bills', value: String(paidBills.length) }
+      { label:'Open Shared Bills', value: String(openBillsForUser(userId).length) },
+      { label:'Open Total', value: money(openBillsForUser(userId).reduce((s,[_,b]) => s + number(b.amount), 0)) },
+      { label:'Paid Shared Bills', value: String(paidBillsForUser(userId).length) }
     ]);
-    detail.innerHTML = renderTable(['Bill','Due Date','Amount','Status'],
-                                   [...openBills, ...paidBills].sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).map(bill =>
-                                   `<tr><td>${escapeHtml(bill.name)}</td><td>${escapeHtml(bill.dueDate || '—')}</td><td>${money(bill.amount)}</td><td>${escapeHtml(bill.status)}</td></tr>`));
-    renderLedger(ledgerItems.filter(item => ['bill_created','bill_paid'].includes(item.type)));
+    detail.innerHTML = renderTable(['Bill','Due','Amount','Status','Action'], sortNewest(Object.entries(bills).filter(([_,b]) => b.userId === userId)).map(([billId,b]) => `<tr><td>${b.name}</td><td>${b.dueDate || '—'}</td><td>${money(b.amount)}</td><td>${b.status}</td><td>${b.status === 'open' && (isAdmin() || sessionUser === userId) ? `<button class="btn btn-sm btn-primary" onclick="payBill('${billId}')">Pay</button>` : ''}</td></tr>`));
+    renderLedger(ledgerItemsForUser(userId).filter((x) => ['bill_created','bill_paid'].includes(x.type)));
     return;
   }
 
-  if (kind === 'client_overview') {
+  if (kind === 'private_bills'){
+    document.getElementById('window-title').textContent = `${user.name} · Private Bills`;
+    subtitle.textContent = 'Personal planner bills only shown to the account owner in-app';
+    renderSummary([
+      { label:'Open Private Bills', value: String(openPrivateBillsForUser(userId).length) },
+      { label:'Open Total', value: money(openPrivateBillsForUser(userId).reduce((s,[_,b]) => s + number(b.amount), 0)) },
+      { label:'Paid Private Bills', value: String(paidPrivateBillsForUser(userId).length) }
+    ]);
+    detail.innerHTML = renderTable(['Bill','Category','Due','Amount','Status','Action'], sortNewest(Object.entries(privateBills[userId] || {})).map(([billId,b]) => `<tr><td>${b.name}</td><td>${b.category || 'Personal'}</td><td>${b.dueDate || '—'}</td><td>${money(b.amount)}</td><td>${b.status}</td><td>${b.status === 'open' && sessionUser === userId ? `<button class="btn btn-sm btn-success" onclick="payPrivateBill('${billId}')">Pay</button>` : ''}</td></tr>`));
+    renderLedger(ledgerItemsForUser(userId).filter((x) => ['private_bill_created','private_bill_paid'].includes(x.type)));
+    return;
+  }
+
+  if (kind === 'client_overview'){
     document.getElementById('window-title').textContent = `${user.name} · Client Overview`;
-    subtitle.textContent = `Full account summary for ${userId}.`;
+    subtitle.textContent = `${user.accountNumber || '—'} · ${user.status}`;
     renderSummary([
-      { label:'Checking', value: money(balance.personal) },
-                  { label:'Staging', value: money(balance.staging) },
-                  { label:'Open Bills', value: money(openBillTotal) }
+      { label:'Checking', value: money(userBals.personal) },
+      { label:'Bill Vault', value: money(userBals.staging) },
+      { label:'Shared Bills Due', value: money(openBillsForUser(userId).reduce((s,[_,b]) => s + number(b.amount), 0)) }
     ]);
-    detail.innerHTML = `
-    <div class="row g-3 mb-3">
-    <div class="col-md-6">
-    <div class="glass p-3 h-100">
-    <div class="label mb-2">Profile</div>
-    <div class="fw-semibold">${escapeHtml(user.name || userId)}</div>
-    <div class="text-muted">${escapeHtml(userId)}</div>
-    <div class="text-muted">Role: ${escapeHtml(user.role || 'client')}</div>
-    <div class="text-muted">Status: ${escapeHtml(user.status || 'active')}</div>
-    </div>
-    </div>
-    <div class="col-md-6">
-    <div class="glass p-3 h-100">
-    <div class="label mb-2">Bill Summary</div>
-    <div class="text-muted">${openBills.length} open bill(s), ${paidBills.length} paid bill(s).</div>
-    </div>
-    </div>
-    </div>` + renderTable(['Bill','Due Date','Amount','Status'],
-                          [...openBills, ...paidBills].sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).map(bill =>
-                          `<tr><td>${escapeHtml(bill.name)}</td><td>${escapeHtml(bill.dueDate || '—')}</td><td>${money(bill.amount)}</td><td>${escapeHtml(bill.status)}</td></tr>`));
-    renderLedger(ledgerItems);
+    detail.innerHTML = `<div class="row g-3 mb-3"><div class="col-md-6"><div class="mini"><div class="label">Profile</div><div class="mt-2"><strong>${user.name}</strong><div class="text-muted">${userId}</div><div class="text-muted">${user.accountNumber || '—'}</div><div class="text-muted">Status: ${user.status}</div></div></div></div><div class="col-md-6"><div class="mini"><div class="label">Planner note</div><div class="mt-2 text-muted">Private bill details are intentionally not surfaced in admin overview windows.</div></div></div></div>` + renderTable(['Bill','Amount','Status'], sortNewest(Object.entries(bills).filter(([_,b]) => b.userId === userId)).slice(0,10).map(([_,b]) => `<tr><td>${b.name}</td><td>${money(b.amount)}</td><td>${b.status}</td></tr>`));
+    renderLedger(ledgerItemsForUser(userId));
     return;
   }
 
-  if (kind === 'admin_global_cash') {
-    const totalCash = Object.values(state.balances).reduce((sum, bal) => sum + Number(bal.personal || 0), 0);
-    const userRows = Object.entries(state.users).map(([id, userObj]) => {
-      const bal = getBalance(id);
-      return `<tr><td>${escapeHtml(userObj.name || id)}<div class="text-muted small">${escapeHtml(id)}</div></td><td>${escapeHtml(userObj.role || '')}</td><td>${money(bal.personal)}</td></tr>`;
-    });
-    document.getElementById('window-title').textContent = 'Admin · Associated Home Fund';
-    subtitle.textContent = 'System-wide view of checking balances.';
+  if (kind === 'admin_treasury'){
+    document.getElementById('window-title').textContent = 'Administrator · Treasury';
+    subtitle.textContent = 'Master source account and shared bill center';
     renderSummary([
-      { label:'Total Checking', value: money(totalCash) },
-                  { label:'Accounts', value: String(Object.keys(state.users).length) },
-                  { label:'Clients', value: String(Object.values(state.users).filter(userObj => userObj.role === 'client').length) }
+      { label:'Treasury Reserve', value: money(system?.treasury?.reserve) },
+      { label:'Open Shared Bills', value: String(Object.values(bills).filter((b) => b.status === 'open').length) },
+      { label:'Open Shared Total', value: money(Object.values(bills).filter((b) => b.status === 'open').reduce((s,b) => s + number(b.amount), 0)) }
     ]);
-    detail.innerHTML = renderTable(['User','Role','Checking'], userRows);
-    renderLedger(Object.entries(state.ledger).map(([id, item]) => ({ id, ...item })).sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)));
+    detail.innerHTML = renderTable(['Client','Bill','Due','Amount','Status'], sortNewest(Object.entries(bills)).map(([_,b]) => `<tr><td>${users[b.userId]?.name || b.userId}</td><td>${b.name}</td><td>${b.dueDate || '—'}</td><td>${money(b.amount)}</td><td>${b.status}</td></tr>`));
+    renderLedger(sortNewest(Object.values(ledger)).filter((x) => ['treasury_funded','treasury_transfer','bill_created','bill_paid'].includes(x.type)));
     return;
   }
 
-  if (kind === 'admin_global_staging') {
-    const totalStaging = Object.values(state.balances).reduce((sum, bal) => sum + Number(bal.staging || 0), 0);
-    const rows = Object.entries(state.users)
-    .filter(([_, userObj]) => userObj.role === 'client')
-    .map(([id, userObj]) => {
-      const bal = getBalance(id);
-      const userOpenTotal = openBillsForUser(id).reduce((sum, bill) => sum + Number(bill.amount || 0), 0);
-      return `<tr><td>${escapeHtml(userObj.name || id)}<div class="text-muted small">${escapeHtml(id)}</div></td><td>${money(bal.staging)}</td><td>${money(userOpenTotal)}</td></tr>`;
-    });
-    document.getElementById('window-title').textContent = 'Admin · Global Bill Staging';
-    subtitle.textContent = 'Reserved funds set aside for all open obligations.';
+  if (kind === 'admin_global_cash'){
+    document.getElementById('window-title').textContent = 'Administrator · User Checking';
+    subtitle.textContent = 'Every user checking account';
     renderSummary([
-      { label:'Total Staging', value: money(totalStaging) },
-                  { label:'Open Bills', value: String(allBills().filter(bill => bill.status !== 'paid').length) },
-                  { label:'Open Bill Total', value: money(allBills().filter(bill => bill.status !== 'paid').reduce((sum, bill) => sum + Number(bill.amount || 0), 0)) }
+      { label:'Total Checking', value: money(Object.entries(balances).filter(([uid]) => uid !== 'admin').reduce((s,[_,b]) => s + number(b.personal), 0)) },
+      { label:'Accounts', value: String(Object.keys(users).length) },
+      { label:'Clients', value: String(Object.values(users).filter((u) => u.role === 'client').length) }
     ]);
-    detail.innerHTML = renderTable(['User','Staging','Open Bills'], rows);
-    renderLedger(Object.entries(state.ledger).map(([id, item]) => ({ id, ...item })).filter(item => ['transfer','bill_paid','bill_created'].includes(item.type)).sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)));
+    detail.innerHTML = renderTable(['User','Account Number','Checking'], Object.entries(users).filter(([_,u]) => u.role === 'client').map(([uid,u]) => `<tr><td>${u.name}</td><td>${u.accountNumber || '—'}</td><td>${money(balances[uid]?.personal || 0)}</td></tr>`));
+    renderLedger(sortNewest(Object.values(ledger)).filter((x) => ['treasury_transfer','transfer'].includes(x.type)));
     return;
   }
 
-  if (kind === 'admin_open_bills') {
-    const rows = allBills().sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).map(bill => {
-      const billUser = getUser(bill.userId);
-      return `<tr><td>${escapeHtml(billUser.name || bill.userId)}</td><td>${escapeHtml(bill.name)}</td><td>${escapeHtml(bill.dueDate || '—')}</td><td>${money(bill.amount)}</td><td>${escapeHtml(bill.status)}</td></tr>`;
-    });
-    document.getElementById('window-title').textContent = 'Admin · Open Bills';
-    subtitle.textContent = 'System-wide unpaid and historical invoice detail.';
+  if (kind === 'admin_global_staging'){
+    document.getElementById('window-title').textContent = 'Administrator · Bill Vault Balances';
+    subtitle.textContent = 'Every reserved bill balance';
     renderSummary([
-      { label:'Open Bill Total', value: money(allBills().filter(bill => bill.status !== 'paid').reduce((sum, bill) => sum + Number(bill.amount || 0), 0)) },
-                  { label:'Open Bills', value: String(allBills().filter(bill => bill.status !== 'paid').length) },
-                  { label:'Paid Bills', value: String(allBills().filter(bill => bill.status === 'paid').length) }
+      { label:'Total Bill Vault', value: money(Object.entries(balances).filter(([uid]) => uid !== 'admin').reduce((s,[_,b]) => s + number(b.staging), 0)) },
+      { label:'Open Shared Bills', value: String(Object.values(bills).filter((b) => b.status === 'open').length) },
+      { label:'Paid Shared Bills', value: String(Object.values(bills).filter((b) => b.status === 'paid').length) }
     ]);
-    detail.innerHTML = renderTable(['Client','Bill','Due Date','Amount','Status'], rows);
-    renderLedger(Object.entries(state.ledger).map(([id, item]) => ({ id, ...item })).filter(item => ['bill_created','bill_paid'].includes(item.type)).sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)));
+    detail.innerHTML = renderTable(['User','Bill Vault','Shared Bill Total'], Object.entries(users).filter(([_,u]) => u.role === 'client').map(([uid,u]) => `<tr><td>${u.name}</td><td>${money(balances[uid]?.staging || 0)}</td><td>${money(openBillsForUser(uid).reduce((s,[_,b]) => s + number(b.amount), 0))}</td></tr>`));
+    renderLedger(sortNewest(Object.values(ledger)).filter((x) => ['treasury_transfer','bill_paid','private_bill_paid','transfer'].includes(x.type)));
+    return;
+  }
+
+  if (kind === 'admin_open_bills'){
+    document.getElementById('window-title').textContent = 'Administrator · Shared Bills';
+    subtitle.textContent = 'System-wide shared bill queue';
+    renderSummary([
+      { label:'Open Shared Total', value: money(Object.values(bills).filter((b) => b.status === 'open').reduce((s,b) => s + number(b.amount), 0)) },
+      { label:'Open Shared Bills', value: String(Object.values(bills).filter((b) => b.status === 'open').length) },
+      { label:'Paid Shared Bills', value: String(Object.values(bills).filter((b) => b.status === 'paid').length) }
+    ]);
+    detail.innerHTML = renderTable(['Client','Bill','Due','Amount','Status','Action'], sortNewest(Object.entries(bills)).map(([billId,b]) => `<tr><td>${users[b.userId]?.name || b.userId}</td><td>${b.name}</td><td>${b.dueDate || '—'}</td><td>${money(b.amount)}</td><td>${b.status}</td><td>${b.status === 'open' ? `<button class="btn btn-sm btn-primary" onclick="payBill('${billId}')">Pay</button>` : ''}</td></tr>`));
+    renderLedger(sortNewest(Object.values(ledger)).filter((x) => ['bill_created','bill_paid'].includes(x.type)));
+    return;
   }
 }
 
-// FIXED: Now listens to all 8 nodes
-db.ref('users').on('value', snap => { state.users = snap.val() || {}; render(); });
-db.ref('balances').on('value', snap => { state.balances = snap.val() || {}; render(); });
-db.ref('bills').on('value', snap => { state.bills = snap.val() || {}; render(); });
-db.ref('ledger').on('value', snap => { state.ledger = snap.val() || {}; render(); });
-db.ref('loans').on('value', snap => { state.loans = snap.val() || {}; });
-db.ref('logs').on('value', snap => { state.logs = snap.val() || {}; });
-db.ref('masterBankLedger').on('value', snap => { state.masterBankLedger = snap.val() || {}; });
-db.ref('system').on('value', snap => { state.system = snap.val() || {}; });
+db.ref('users').on('value', (snap) => { users = snap.val() || {}; render(); });
+db.ref('balances').on('value', (snap) => { balances = snap.val() || {}; render(); });
+db.ref('bills').on('value', (snap) => { bills = snap.val() || {}; render(); });
+db.ref('privateBills').on('value', (snap) => { privateBills = snap.val() || {}; render(); });
+db.ref('ledger').on('value', (snap) => { ledger = snap.val() || {}; render(); });
+db.ref('system').on('value', (snap) => { system = snap.val() || { treasury: { reserve: 0 } }; render(); });

@@ -4,695 +4,470 @@ const firebaseConfig = {
   authDomain: 'homefund-3b81a.firebaseapp.com',
   storageBucket: 'homefund-3b81a.appspot.com'
 };
-
 if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-const SESSION_KEY = 'hfc_session_v2';
-const DEFAULT_ADMIN = {
-  name: 'System Admin',
-  pin: '0000',
-  role: 'admin',
-  status: 'active'
-};
+const ADMIN_USER = 'admin';
+const ADMIN_PIN = '0000';
+const SESSION_KEY = 'hfc_session_v3';
 
-const state = {
-  currentUser: null,
-  users: {},
-  balances: {},
-  bills: {},
-  ledger: {},
-  loans: {},
-  logs: {},
-  masterBankLedger: {},
-  system: {},
-  clockTimer: null,
-  listenersReady: false
-};
+let currentUser = null;
+let users = {};
+let balances = {};
+let bills = {};
+let privateBills = {};
+let ledger = {};
+let system = { treasury: { reserve: 0 } };
 
-const els = {};
-let modals = {};
+let clientModal, billModal, privateBillModal, transferModal, treasuryFundModal;
 
-function qs(id){ return document.getElementById(id); }
-function money(n){ return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(n || 0)); }
-function sanitizeUserId(value){ return String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, ''); }
-function parseAmount(value){ const n = Number(value); return Number.isFinite(n) ? Number(n.toFixed(2)) : NaN; }
-function uid(prefix='id'){ return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`; }
-function nowIso(){ return new Date().toISOString(); }
-function escapeHtml(value){ return String(value ?? '').replace(/[&<>'"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;' }[c])); }
+const $ = (id) => document.getElementById(id);
+const money = (n) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(n || 0));
+const number = (n) => Number(Number(n || 0).toFixed(2));
+const nowIso = () => new Date().toISOString();
+const sortNewest = (arr) => [...arr].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+const openBillsForUser = (uid) => Object.entries(bills).filter(([_, b]) => b.userId === uid && b.status === 'open');
+const paidBillsForUser = (uid) => Object.entries(bills).filter(([_, b]) => b.userId === uid && b.status === 'paid');
+const getPrivateBillMap = (uid) => privateBills[uid] || {};
+const openPrivateBillsForUser = (uid) => Object.entries(getPrivateBillMap(uid)).filter(([_, b]) => b.status === 'open');
+const paidPrivateBillsForUser = (uid) => Object.entries(getPrivateBillMap(uid)).filter(([_, b]) => b.status === 'paid');
+const ledgerItemsForUser = (uid) => sortNewest(Object.values(ledger).filter((x) => x.userId === uid));
+const activeClientEntries = () => Object.entries(users).filter(([uid, u]) => uid !== ADMIN_USER && u.role === 'client');
 
-function getUser(userId){
-  if (userId === 'admin') return { ...DEFAULT_ADMIN, ...(state.users.admin || {}) };
-  return state.users[userId] || null;
-}
-
-function getBalance(userId){
-  return {
-    personal: Number(state.balances[userId]?.personal || 0),
-    staging: Number(state.balances[userId]?.staging || 0)
-  };
-}
-
-function getAllBills(){ return Object.entries(state.bills).map(([id, bill]) => ({ id, ...bill })); }
-function getBillsForUser(userId){ return getAllBills().filter(bill => bill.userId === userId); }
-function getOpenBillsForUser(userId){ return getBillsForUser(userId).filter(bill => bill.status !== 'paid' && bill.status !== 'split'); }
-function getPaidBillsForUser(userId){ return getBillsForUser(userId).filter(bill => bill.status === 'paid'); }
-function openBillTotalForUser(userId){ return getOpenBillsForUser(userId).reduce((sum, bill) => sum + Number(bill.amount || 0), 0); }
-function getLedgerItems(userId=null){
-  const items = Object.entries(state.ledger).map(([id, item]) => ({ id, ...item }));
-  const filtered = userId ? items.filter(item => item.userId === userId) : items;
-  return filtered.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-}
-
-function showToast(message, type='info'){
-  const container = qs('toast-container');
-  if (!container) return;
-  const iconMap = { success:'circle-check', danger:'triangle-exclamation', warning:'circle-exclamation', info:'circle-info' };
+function showToast(msg, type = 'info') {
+  const container = $('toast-container');
   const toast = document.createElement('div');
-  toast.className = `alert alert-${type} border-0 shadow-lg mb-2`;
-  toast.style.background = 'rgba(12, 22, 36, .92)';
-  toast.style.color = '#eef6ff';
-  toast.style.borderRadius = '16px';
-  toast.innerHTML = `<i class="fa-solid fa-${iconMap[type] || 'circle-info'} me-2"></i>${escapeHtml(message)}`;
+  const map = { success: 'success', danger: 'danger', warning: 'warning', info: 'primary' };
+  toast.className = `alert alert-${map[type] || 'primary'} shadow-sm border-0 mb-2`;
+  toast.style.borderRadius = '18px';
+  toast.innerHTML = msg;
   container.appendChild(toast);
-  setTimeout(() => {
-    toast.style.opacity = '0';
-    toast.style.transform = 'translateY(-8px)';
-    toast.style.transition = 'all .22s ease';
-    setTimeout(() => toast.remove(), 240);
-  }, 3000);
+  setTimeout(() => toast.remove(), 3400);
 }
 
-function showLoginError(message){
-  els.loginErr.textContent = message;
-  els.loginErr.classList.remove('d-none');
+function showLoginError(msg) {
+  const err = $('login-err');
+  err.textContent = msg;
+  err.classList.remove('d-none');
 }
+function clearLoginError() { $('login-err').classList.add('d-none'); }
+function isAdmin() { return currentUser && users[currentUser]?.role === 'admin'; }
 
-function clearLoginError(){
-  els.loginErr.textContent = '';
-  els.loginErr.classList.add('d-none');
-}
-
-function persistSession(){
-  if (!state.currentUser) {
-    localStorage.removeItem(SESSION_KEY);
-    return;
-  }
-  localStorage.setItem(SESSION_KEY, JSON.stringify({ userId: state.currentUser }));
-}
-
-function restoreSession(){
-  try {
-    const session = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
-    if (!session?.userId) return;
-    const user = getUser(session.userId);
-    if (user && user.status !== 'disabled') {
-      state.currentUser = session.userId;
-      showApp();
-    }
-  } catch {
-    localStorage.removeItem(SESSION_KEY);
-  }
-}
-
-function switchView(viewName){
-  document.querySelectorAll('.view').forEach(view => view.classList.remove('active'));
-  qs(`view-${viewName}`)?.classList.add('active');
-}
-
-// FIXED: Removed the d-flex class so the login page completely vanishes
-function showApp(){
-  if (!state.currentUser) return;
-
-  els.loginWrapper.classList.replace('d-flex', 'd-none');
-  els.appWrapper.style.display = 'block';
-
-  const user = getUser(state.currentUser);
-  const role = user?.role || 'client';
-  els.sessionUserLabel.textContent = `${user?.name || state.currentUser} · ${role}`;
-  if (role === 'admin') {
-    switchView('admin');
-  } else {
-    switchView('client');
-    els.clientWelcomeName.textContent = `Welcome, ${user?.name || state.currentUser}`;
-  }
-  persistSession();
-  render();
-  startClock();
-}
-
-function showLogin(){
-  state.currentUser = null;
-  els.appWrapper.style.display = 'none';
-
-  els.loginWrapper.classList.replace('d-none', 'd-flex');
-
-  els.loginPin.value = '';
-  persistSession();
-}
-
-function startClock(){
-  if (state.clockTimer) return;
-  const tick = () => { els.clockTime.textContent = new Date().toLocaleTimeString([], { hour12:false }); };
-  tick();
-  state.clockTimer = setInterval(tick, 1000);
-}
-
-async function ensureAdminBootstrap(){
-  const usersRef = db.ref('users/admin');
-  const balancesRef = db.ref('balances/admin');
-  const [userSnap, balanceSnap] = await Promise.all([usersRef.get(), balancesRef.get()]);
-  const writes = [];
-  if (!userSnap.exists()) writes.push(usersRef.set(DEFAULT_ADMIN));
-  if (!balanceSnap.exists()) writes.push(balancesRef.set({ personal:0, staging:0 }));
-  if (writes.length) await Promise.all(writes);
-}
-
-function authenticateUser(){
-  clearLoginError();
-  const userId = sanitizeUserId(els.loginUser.value);
-  const pin = String(els.loginPin.value || '').trim();
-
-  if (!userId || !pin) return showLoginError('Missing credentials.');
-
-  const user = getUser(userId);
-  if (!user || user.status === 'disabled') return showLoginError('Account not found or disabled.');
-  if (String(user.pin) !== pin) return showLoginError('Authentication failed.');
-
-  state.currentUser = userId;
-  els.loginPin.value = '';
-  showApp();
-  showToast(`Secure session established for ${user.name || userId}.`, 'success');
-}
-
-function logoutUser(){
-  showToast('Session terminated.', 'warning');
-  showLogin();
-}
-
-function populateClientSelect(selectId, options={ includeAdmin:false, placeholder:null }){
-  const select = qs(selectId);
-  if (!select) return;
-  const users = Object.entries(state.users)
-  .filter(([id, user]) => options.includeAdmin || user.role !== 'admin')
-  .sort((a,b) => (a[1].name || a[0]).localeCompare(b[1].name || b[0]));
-
-  const html = [];
-  if (options.placeholder) html.push(`<option value="">${escapeHtml(options.placeholder)}</option>`);
-  users.forEach(([userId, user]) => {
-    html.push(`<option value="${escapeHtml(userId)}">${escapeHtml(user.name || userId)} (${escapeHtml(userId)})</option>`);
-  });
-  select.innerHTML = html.join('');
-}
-
-function populatePayBillSelect(){
-  const select = els.payBillSelect;
-  if (!select) return;
-  const userId = state.currentUser;
-  const openBills = getOpenBillsForUser(userId);
-  if (!openBills.length) {
-    select.innerHTML = '<option value="">No open bills</option>';
-    return;
-  }
-  select.innerHTML = openBills
-  .sort((a,b) => new Date(a.dueDate || 0) - new Date(b.dueDate || 0))
-  .map(bill => `<option value="${escapeHtml(bill.id)}">${escapeHtml(bill.name)} · ${money(bill.amount)}${bill.dueDate ? ` · due ${escapeHtml(bill.dueDate)}` : ''}</option>`)
-  .join('');
-}
-
-// NEW: Populates the dropdown selector for the split bill feature
-function populateSplitBillSelect(){
-  const select = els.splitBillSelect;
-  if (!select) return;
-  const openBills = getAllBills().filter(b => b.status === 'open');
-  if (!openBills.length) {
-    select.innerHTML = '<option value="">No open bills available</option>';
-    return;
-  }
-  select.innerHTML = openBills
-  .sort((a,b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
-  .map(b => `<option value="${b.id}">${escapeHtml(b.name)} · ${money(b.amount)} (Currently billed to ${escapeHtml(getUser(b.userId)?.name || b.userId)})</option>`)
-  .join('');
-}
-
-function openWindow(kind, userId=state.currentUser){
-  const url = `account.html?kind=${encodeURIComponent(kind)}&user=${encodeURIComponent(userId)}`;
-  window.open(url, '_blank', 'width=1180,height=860,resizable=yes,scrollbars=yes');
-}
-
-function renderLedgerFeed(targetId, items){
-  const target = qs(targetId);
-  if (!target) return;
-  if (!items.length) {
-    target.innerHTML = '<div class="list-group-item text-muted">No activity yet.</div>';
-    return;
-  }
-  target.innerHTML = items.slice(0, 12).map(item => `
-  <div class="list-group-item">
-  <div class="d-flex justify-content-between gap-3 align-items-start">
-  <div>
-  <div class="fw-semibold">${escapeHtml(item.title || 'Activity')}</div>
-  <div class="text-muted small">${escapeHtml(item.description || '')}</div>
-  </div>
-  <div class="text-end">
-  <div class="fw-semibold">${item.amount != null ? money(item.amount) : ''}</div>
-  <div class="text-muted small">${new Date(item.createdAt || Date.now()).toLocaleString()}</div>
-  </div>
-  </div>
-  </div>`).join('');
-}
-
-function renderAdminUsers(){
-  const tbody = els.adminUsersBody;
-  const rows = Object.entries(state.users)
-  .filter(([_, user]) => user.role !== 'admin')
-  .sort((a,b) => (a[1].name || a[0]).localeCompare(b[1].name || b[0]))
-  .map(([userId, user]) => {
-    const balance = getBalance(userId);
-    const openTotal = openBillTotalForUser(userId);
-    return `
-    <tr>
-    <td>
-    <div class="fw-semibold">${escapeHtml(user.name || userId)}</div>
-    <div class="text-muted small">${escapeHtml(userId)} · ${escapeHtml(user.status || 'active')}</div>
-    </td>
-    <td>${money(balance.personal)}</td>
-    <td>${money(balance.staging)}</td>
-    <td>${money(openTotal)}</td>
-    <td>
-    <div class="action-stack">
-    <button class="btn btn-sm btn-outline-light" data-action="open-overview" data-user="${escapeHtml(userId)}"><i class="fa-solid fa-up-right-from-square me-1"></i>Open</button>
-    <button class="btn btn-sm btn-outline-light" data-action="deposit" data-user="${escapeHtml(userId)}"><i class="fa-solid fa-money-bill-wave me-1"></i>Deposit</button>
-    <button class="btn btn-sm btn-outline-light" data-action="pay-next" data-user="${escapeHtml(userId)}"><i class="fa-solid fa-circle-check me-1"></i>Pay</button>
-    </div>
-    </td>
-    </tr>`;
-  });
-
-  tbody.innerHTML = rows.length ? rows.join('') : '<tr><td colspan="5" class="text-muted">No clients yet.</td></tr>';
-}
-
-function render(){
-  const totalCash = Object.values(state.balances).reduce((sum, bal) => sum + Number(bal.personal || 0), 0);
-  const totalStaging = Object.values(state.balances).reduce((sum, bal) => sum + Number(bal.staging || 0), 0);
-  const openBills = getAllBills().filter(bill => bill.status === 'open');
-  const openBillTotal = openBills.reduce((sum, bill) => sum + Number(bill.amount || 0), 0);
-
-  els.adminTotalCash.textContent = money(totalCash);
-  els.adminTotalStaging.textContent = money(totalStaging);
-  els.adminOpenBillsTotal.textContent = money(openBillTotal);
-
-  if (state.currentUser) {
-    const balance = getBalance(state.currentUser);
-    els.dashPersonalBal.textContent = money(balance.personal);
-    els.dashStagingBal.textContent = money(balance.staging);
-    els.clientTotalDue.textContent = money(openBillTotalForUser(state.currentUser));
-  }
-
-  renderAdminUsers();
-  renderLedgerFeed('admin-ledger-feed', getLedgerItems());
-  renderLedgerFeed('client-ledger-feed', getLedgerItems(state.currentUser));
-  populateClientSelect('bill-user', { placeholder:'Select client' });
-  populateClientSelect('deposit-user', { placeholder:'Select client' });
-  populatePayBillSelect();
-  populateSplitBillSelect(); // Make sure the split dropdown stays current
-}
-
-function attachRealtimeListeners(){
-  if (state.listenersReady) return;
-  state.listenersReady = true;
-  db.ref('users').on('value', snap => {
-    state.users = snap.val() || {};
-    if (!state.users.admin) state.users.admin = { ...DEFAULT_ADMIN };
-    if (state.currentUser && !getUser(state.currentUser)) {
-      showToast('Your account is no longer available.', 'warning');
-      showLogin();
-      return;
-    }
-    if (!state.currentUser) restoreSession();
-    render();
-  });
-  db.ref('balances').on('value', snap => { state.balances = snap.val() || {}; render(); });
-  db.ref('bills').on('value', snap => { state.bills = snap.val() || {}; render(); });
-  db.ref('ledger').on('value', snap => { state.ledger = snap.val() || {}; render(); });
-  db.ref('loans').on('value', snap => { state.loans = snap.val() || {}; });
-  db.ref('logs').on('value', snap => { state.logs = snap.val() || {}; });
-  db.ref('masterBankLedger').on('value', snap => { state.masterBankLedger = snap.val() || {}; });
-  db.ref('system').on('value', snap => { state.system = snap.val() || {}; });
-}
-
-async function appendLedger(entry){
-  const id = uid('ledger');
-  await db.ref(`ledger/${id}`).set({ createdAt: nowIso(), ...entry });
-}
-
-function updateBalanceTransaction(userId, updater){
-  return db.ref(`balances/${userId}`).transaction(current => {
-    const base = {
-      personal: Number(current?.personal || 0),
-                                                  staging: Number(current?.staging || 0)
+function ensureAdminBootstrap() {
+  const updates = {};
+  if (!users[ADMIN_USER]) {
+    updates['users/admin'] = {
+      username: 'admin',
+      name: 'System Administrator',
+      pin: ADMIN_PIN,
+      role: 'admin',
+      status: 'active',
+      accountNumber: 'TRSY-000001',
+      createdAt: nowIso()
     };
-    return updater(base);
-  });
+  }
+  if (!balances[ADMIN_USER]) updates['balances/admin'] = { personal: 0, staging: 0 };
+  if (system?.treasury?.reserve == null) updates['system/treasury/reserve'] = 0;
+  if (Object.keys(updates).length) db.ref().update(updates);
 }
 
-async function createClient(){
-  const userId = sanitizeUserId(els.newClientUsername.value);
-  const name = String(els.newClientName.value || '').trim();
-  const pin = String(els.newClientPin.value || '').trim();
-  const opening = parseAmount(els.newClientOpening.value);
-
-  if (!userId || !name || !pin) return showToast('Fill out username, full name, and PIN.', 'warning');
-  if (Number.isNaN(opening) || opening < 0) return showToast('Opening deposit must be zero or more.', 'warning');
-  if (getUser(userId)) return showToast('That username already exists.', 'warning');
-
-  await db.ref(`users/${userId}`).set({ name, pin, role:'client', status:'active' });
-  await db.ref(`balances/${userId}`).set({ personal: opening, staging: 0 });
-  await appendLedger({
-    userId,
-    type:'client_created',
-    title:'Client created',
-    amount: opening,
-    description: `${name} account created${opening ? ` with opening deposit ${money(opening)}` : ''}.`
-  });
-
-  modals.client.hide();
-  els.newClientUsername.value = '';
-  els.newClientName.value = '';
-  els.newClientPin.value = '';
-  els.newClientOpening.value = '0';
-  showToast(`${name} was created successfully.`, 'success');
+function generateAccountNumber() {
+  const existing = new Set(Object.values(users).map((u) => u.accountNumber).filter(Boolean));
+  let candidate = '';
+  do candidate = `HFC-${Math.floor(10000000 + Math.random() * 90000000)}`;
+  while (existing.has(candidate));
+  return candidate;
 }
 
-async function recordBill(){
-  const userId = sanitizeUserId(els.billUser.value);
-  const name = String(els.billName.value || '').trim();
-  const amount = parseAmount(els.billAmount.value);
-  const dueDate = String(els.billDueDate.value || '').trim();
+function setSession(uid) { localStorage.setItem(SESSION_KEY, uid); }
+function clearSession() { localStorage.removeItem(SESSION_KEY); }
 
-  if (!userId || !name || Number.isNaN(amount) || amount <= 0) return showToast('Provide a client, bill name, and valid amount.', 'warning');
+function authenticateUser() {
+  const rawUser = $('login-user').value.trim().toLowerCase();
+  const pin = $('login-pin').value.trim();
+  if (!rawUser || !pin) return showLoginError('Enter a username and PIN.');
 
-  const billId = uid('bill');
-  await db.ref(`bills/${billId}`).set({
-    userId,
-    name,
+  const user = users[rawUser];
+  const valid = user && user.pin === pin && user.status === 'active';
+  const adminBootstrap = rawUser === ADMIN_USER && pin === ADMIN_PIN;
+  if (!valid && !adminBootstrap) return showLoginError('Authentication failed.');
+
+  currentUser = rawUser;
+  setSession(rawUser);
+  clearLoginError();
+  $('login-pin').value = '';
+  $('login-wrapper').style.display = 'none';
+  $('app-wrapper').style.display = 'block';
+  renderAll();
+  startClock();
+  showToast(`Session established for <strong>${rawUser}</strong>.`, 'success');
+}
+
+function logoutUser() {
+  currentUser = null;
+  clearSession();
+  $('app-wrapper').style.display = 'none';
+  $('login-wrapper').style.display = 'flex';
+  $('login-user').value = '';
+  $('login-pin').value = '';
+}
+
+function startClock() {
+  if (window.__hfcClockStarted) return;
+  window.__hfcClockStarted = true;
+  setInterval(() => { $('clockTime').textContent = new Date().toLocaleTimeString([], { hour12: false }); }, 1000);
+}
+
+function renderView() {
+  document.querySelectorAll('.view').forEach((v) => v.classList.remove('active'));
+  if (!currentUser) return;
+  $('session-user-label').textContent = `${users[currentUser]?.name || currentUser} · ${users[currentUser]?.role || ''}`;
+  if (isAdmin()) $('view-admin').classList.add('active');
+  else $('view-client').classList.add('active');
+}
+
+function ledgerRowHTML(item) {
+  return `<div class="list-row"><div><div class="fw-semibold">${item.title || 'Activity'}</div><div class="small muted">${item.description || ''}</div></div><div class="text-end"><div class="fw-semibold">${item.amount != null ? money(item.amount) : ''}</div><div class="small muted">${new Date(item.createdAt || Date.now()).toLocaleString()}</div></div></div>`;
+}
+
+function sharedBillRowHTML([billId, bill], includePay = false) {
+  const user = users[bill.userId] || {};
+  const canPay = includePay && bill.status === 'open';
+  return `<div class="list-row">
+    <div>
+      <div class="fw-semibold">${bill.name}</div>
+      <div class="small muted">${user.name || bill.userId} · due ${bill.dueDate || '—'} · ${bill.status}</div>
+    </div>
+    <div class="text-end">
+      <div class="fw-semibold">${money(bill.amount)}</div>
+      ${canPay ? `<button class="btn btn-sm btn-primary mt-2" onclick="payBill('${billId}')">Pay From Bill Vault</button>` : ''}
+    </div>
+  </div>`;
+}
+
+function privateBillRowHTML([billId, bill], includePay = false) {
+  const canPay = includePay && bill.status === 'open';
+  return `<div class="list-row">
+    <div>
+      <div class="fw-semibold">${bill.name}</div>
+      <div class="small muted">${bill.category || 'Personal'} · due ${bill.dueDate || '—'} · ${bill.status}</div>
+    </div>
+    <div class="text-end">
+      <div class="fw-semibold">${money(bill.amount)}</div>
+      ${canPay ? `<button class="btn btn-sm btn-success mt-2" onclick="payPrivateBill('${billId}')">Pay From Bill Vault</button>` : ''}
+    </div>
+  </div>`;
+}
+
+function populateUserSelects() {
+  const options = activeClientEntries().map(([uid, u]) => `<option value="${uid}">${u.name} (${uid})</option>`).join('');
+  $('bill-user').innerHTML = options;
+  $('treasury-user').innerHTML = options;
+}
+
+function coverageText(userId) {
+  const userBals = balances[userId] || { staging: 0 };
+  const sharedDue = openBillsForUser(userId).reduce((s, [_, b]) => s + number(b.amount), 0);
+  return money(number(userBals.staging) - sharedDue);
+}
+
+function renderAdmin() {
+  const treasuryReserve = number(system?.treasury?.reserve);
+  const checkingTotal = Object.entries(balances).filter(([uid]) => uid !== ADMIN_USER).reduce((sum, [_, b]) => sum + number(b.personal), 0);
+  const stagingTotal = Object.entries(balances).filter(([uid]) => uid !== ADMIN_USER).reduce((sum, [_, b]) => sum + number(b.staging), 0);
+  const openTotal = Object.values(bills).filter((b) => b.status === 'open').reduce((sum, b) => sum + number(b.amount), 0);
+
+  $('treasury-balance').textContent = money(treasuryReserve);
+  $('admin-total-cash').textContent = money(checkingTotal);
+  $('admin-total-staging').textContent = money(stagingTotal);
+  $('admin-open-bills-total').textContent = money(openTotal);
+
+  $('adminUsersBody').innerHTML = activeClientEntries().map(([uid, u]) => {
+    const b = balances[uid] || { personal: 0, staging: 0 };
+    return `<tr>
+      <td><div class="fw-semibold">${u.name}</div><div class="small muted mono">${uid} · ${u.accountNumber || 'pending'}</div></td>
+      <td>${money(b.personal)}</td>
+      <td>${money(b.staging)}</td>
+      <td><span class="pill ${u.status === 'active' ? 'status-active' : 'status-closed'}">${u.status}</span></td>
+      <td>
+        <div class="d-flex flex-wrap gap-2">
+          <button class="btn btn-sm btn-outline-primary" onclick="openAccountWindow('client_overview','${uid}')">Open</button>
+          <button class="btn btn-sm btn-outline-secondary" onclick="toggleUserStatus('${uid}')">${u.status === 'active' ? 'Close' : 'Open'}</button>
+          <button class="btn btn-sm btn-outline-danger" onclick="deleteUser('${uid}')">Delete</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="5" class="muted">No client accounts yet.</td></tr>`;
+
+  $('admin-ledger-feed').innerHTML = sortNewest(Object.values(ledger)).slice(0, 10).map(ledgerRowHTML).join('') || `<div class="muted">No activity yet.</div>`;
+  $('bill-control-feed').innerHTML = sortNewest(Object.entries(bills).filter(([_, b]) => b.status === 'open').map(([id, b]) => ({ id, ...b })))
+    .slice(0, 8)
+    .map((b) => sharedBillRowHTML([b.id, b], true))
+    .join('') || `<div class="muted">No shared bills.</div>`;
+}
+
+function renderClient() {
+  const user = users[currentUser] || {};
+  const userBals = balances[currentUser] || { personal: 0, staging: 0 };
+  const sharedOpen = openBillsForUser(currentUser);
+  const privateOpen = openPrivateBillsForUser(currentUser);
+  const sharedDue = sharedOpen.reduce((sum, [_, bill]) => sum + number(bill.amount), 0);
+  const privateDue = privateOpen.reduce((sum, [_, bill]) => sum + number(bill.amount), 0);
+  const recommended = number(sharedDue + privateDue);
+  const shortage = number(recommended - number(userBals.staging));
+
+  $('client-welcome-name').textContent = `Welcome, ${user.name || currentUser}`;
+  $('dash-personal-bal').textContent = money(userBals.personal);
+  $('dash-staging-bal').textContent = money(userBals.staging);
+  $('client-total-due').textContent = money(sharedDue);
+  $('client-private-due').textContent = money(privateDue);
+  $('coverage-pill').textContent = coverageText(currentUser);
+
+  $('client-ledger-feed').innerHTML = ledgerItemsForUser(currentUser).slice(0, 12).map(ledgerRowHTML).join('') || `<div class="muted">No activity yet.</div>`;
+  $('client-bill-feed').innerHTML = sharedOpen.map((entry) => sharedBillRowHTML(entry, true)).join('') || `<div class="muted">No shared bills.</div>`;
+  $('private-bill-feed').innerHTML = privateOpen.map((entry) => privateBillRowHTML(entry, true)).join('') || `<div class="muted">No private bills yet.</div>`;
+
+  $('money-guide').innerHTML = `
+    <div class="mb-2"><strong>Suggested bill vault target:</strong> ${money(recommended)}</div>
+    <div class="mb-2"><strong>Shared bills:</strong> ${money(sharedDue)}</div>
+    <div class="mb-2"><strong>Private bills:</strong> ${money(privateDue)}</div>
+    <div><strong>${shortage > 0 ? 'You still need to move' : 'You are ahead by'}</strong> ${money(Math.abs(shortage))} ${shortage > 0 ? 'into your bill vault.' : 'in your bill vault.'}</div>`;
+}
+
+function renderAll() {
+  ensureAdminBootstrap();
+  renderView();
+  populateUserSelects();
+  if (!currentUser) return;
+  if (isAdmin()) renderAdmin();
+  else renderClient();
+}
+
+function openAccountWindow(kind, uid = currentUser) {
+  window.open(`account.html?kind=${encodeURIComponent(kind)}&user=${encodeURIComponent(uid)}`, '_blank', 'width=1160,height=840,resizable=yes');
+}
+window.openAccountWindow = openAccountWindow;
+
+function createLedgerEntry(entry) {
+  return db.ref('ledger').push({ createdAt: nowIso(), ...entry });
+}
+
+async function createClient() {
+  const username = $('new-client-username').value.trim().toLowerCase();
+  const name = $('new-client-name').value.trim();
+  const pin = $('new-client-pin').value.trim();
+  const opening = number($('new-client-opening').value);
+  if (!username || !name || !pin) return showToast('Complete every client field.', 'warning');
+  if (users[username]) return showToast('That username already exists.', 'danger');
+
+  const accountNumber = generateAccountNumber();
+  await db.ref().update({
+    [`users/${username}`]: { username, name, pin, role: 'client', status: 'active', accountNumber, createdAt: nowIso() },
+    [`balances/${username}`]: { personal: 0, staging: 0 },
+    [`privateBills/${username}`]: null
+  });
+  await createLedgerEntry({ type: 'client_created', userId: username, amount: 0, title: 'Client created', description: `${name} created with account ${accountNumber}.` });
+  if (opening > 0) await transferFromTreasury(username, 'personal', opening, 'Opening deposit');
+
+  clientModal.hide();
+  ['new-client-username', 'new-client-name', 'new-client-pin', 'new-client-opening'].forEach((id) => $(id).value = id === 'new-client-opening' ? '0' : '');
+  showToast('Client account created.', 'success');
+}
+
+async function toggleUserStatus(uid) {
+  const user = users[uid];
+  if (!user) return;
+  const newStatus = user.status === 'active' ? 'closed' : 'active';
+  await db.ref(`users/${uid}/status`).set(newStatus);
+  await createLedgerEntry({ type: 'user_status_changed', userId: uid, title: `User ${newStatus}`, description: `${users[currentUser]?.name || currentUser} changed ${uid} to ${newStatus}.` });
+  showToast(`User ${newStatus}.`, 'success');
+}
+window.toggleUserStatus = toggleUserStatus;
+
+async function deleteUser(uid) {
+  if (!confirm(`Delete ${uid}? This removes the user, balances, and bill records.`)) return;
+  const batch = { [`users/${uid}`]: null, [`balances/${uid}`]: null, [`privateBills/${uid}`]: null };
+  Object.entries(bills).forEach(([billId, bill]) => { if (bill.userId === uid) batch[`bills/${billId}`] = null; });
+  await db.ref().update(batch);
+  await createLedgerEntry({ type: 'user_deleted', userId: uid, title: 'User deleted', description: `${users[currentUser]?.name || currentUser} deleted ${uid}.` });
+  showToast('User deleted.', 'warning');
+}
+window.deleteUser = deleteUser;
+
+async function fundTreasury() {
+  const amount = number($('treasury-fund-amount').value);
+  const memo = $('treasury-fund-note').value.trim() || 'Treasury funded';
+  if (amount <= 0) return showToast('Enter an amount to fund treasury.', 'warning');
+  await db.ref('system/treasury/reserve').transaction((cur) => number(cur) + amount);
+  await createLedgerEntry({ type: 'treasury_funded', userId: ADMIN_USER, amount, title: 'Treasury funded', description: memo });
+  treasuryFundModal.hide();
+  $('treasury-fund-amount').value = '';
+  $('treasury-fund-note').value = '';
+  showToast('Treasury reserve increased.', 'success');
+}
+
+async function transferFromTreasury(uid, destination, amount, memo) {
+  amount = number(amount);
+  if (!uid || amount <= 0) return showToast('Choose a user and valid amount.', 'warning');
+  const reserveResult = await db.ref('system/treasury/reserve').transaction((cur) => {
+    cur = number(cur);
+    if (cur < amount) return;
+    return number(cur - amount);
+  });
+  if (!reserveResult.committed) return showToast('Treasury reserve is too low.', 'danger');
+
+  await db.ref(`balances/${uid}/${destination}`).transaction((cur) => number(cur) + amount);
+  await createLedgerEntry({
+    type: 'treasury_transfer',
+    userId: uid,
     amount,
-    dueDate,
-    status:'open',
-    createdAt: nowIso(),
-                                      paidAt: null
+    title: 'Treasury transfer',
+    description: `${users[currentUser]?.name || currentUser} transferred ${money(amount)} from treasury into ${destination === 'staging' ? 'bill vault' : destination} for ${users[uid]?.name || uid}. ${memo || ''}`.trim()
   });
-  await appendLedger({
-    userId,
-    billId,
-    type:'bill_created',
-    title:'Bill recorded',
-    amount,
-    description: `${name}${dueDate ? ` due ${dueDate}` : ''}.`
+  showToast('Treasury transfer complete.', 'success');
+}
+
+async function executeTreasuryTransfer() {
+  await transferFromTreasury($('treasury-user').value, $('treasury-destination').value, $('treasury-amount').value, $('treasury-note').value.trim());
+  $('treasury-amount').value = '';
+  $('treasury-note').value = '';
+}
+
+async function createSharedBill() {
+  const userId = isAdmin() ? $('bill-user').value : currentUser;
+  const name = $('bill-name').value.trim();
+  const amount = number($('bill-amount').value);
+  const dueDate = $('bill-due-date').value;
+  if (!userId || !name || amount <= 0) return showToast('Enter a client, bill name, and amount.', 'warning');
+
+  const ref = db.ref('bills').push();
+  await ref.set({ userId, name, amount, dueDate: dueDate || '', status: 'open', createdAt: nowIso(), createdBy: currentUser });
+  await createLedgerEntry({ type: 'bill_created', userId, amount, title: 'Shared bill recorded', description: `${name} was recorded${dueDate ? ` with due date ${dueDate}` : ''}.` });
+  billModal.hide();
+  ['bill-name', 'bill-amount', 'bill-due-date'].forEach((id) => $(id).value = '');
+  showToast('Shared bill recorded.', 'success');
+}
+
+async function createPrivateBill() {
+  const name = $('private-bill-name').value.trim();
+  const amount = number($('private-bill-amount').value);
+  const dueDate = $('private-bill-due-date').value;
+  const category = $('private-bill-category').value.trim();
+  if (!name || amount <= 0) return showToast('Enter a bill name and amount.', 'warning');
+
+  const ref = db.ref(`privateBills/${currentUser}`).push();
+  await ref.set({ name, amount, dueDate: dueDate || '', category: category || 'Personal', status: 'open', createdAt: nowIso() });
+  await createLedgerEntry({ type: 'private_bill_created', userId: currentUser, amount, title: 'Private bill added', description: `${name} added to your private planner.` });
+  privateBillModal.hide();
+  ['private-bill-name', 'private-bill-amount', 'private-bill-due-date', 'private-bill-category'].forEach((id) => $(id).value = '');
+  showToast('Private bill added to your planner.', 'success');
+}
+
+async function transferBetweenClientBalances() {
+  const direction = $('transfer-direction').value;
+  const amount = number($('transfer-amount').value);
+  const note = $('transfer-note').value.trim() || 'Balance transfer';
+  if (amount <= 0) return showToast('Enter a valid transfer amount.', 'warning');
+
+  const fromKey = direction === 'personal_to_staging' ? 'personal' : 'staging';
+  const toKey = direction === 'personal_to_staging' ? 'staging' : 'personal';
+  const debit = await db.ref(`balances/${currentUser}/${fromKey}`).transaction((cur) => {
+    cur = number(cur);
+    if (cur < amount) return;
+    return number(cur - amount);
   });
+  if (!debit.committed) return showToast('Insufficient funds for transfer.', 'danger');
 
-  modals.bill.hide();
-  els.billName.value = '';
-  els.billAmount.value = '';
-  els.billDueDate.value = '';
-  showToast(`${name} was added for ${getUser(userId)?.name || userId}.`, 'success');
+  await db.ref(`balances/${currentUser}/${toKey}`).transaction((cur) => number(cur) + amount);
+  await createLedgerEntry({ type: 'transfer', userId: currentUser, amount, title: 'Internal transfer', description: `${money(amount)} moved from ${fromKey === 'personal' ? 'checking' : 'bill vault'} to ${toKey === 'personal' ? 'checking' : 'bill vault'}. ${note}` });
+  transferModal.hide();
+  $('transfer-amount').value = '';
+  $('transfer-note').value = '';
+  showToast('Transfer complete.', 'success');
 }
 
-// NEW: The bill splitting logic
-async function splitBill(){
-  const billId = els.splitBillSelect.value;
-  const originalBill = state.bills[billId];
-  if (!originalBill || originalBill.status !== 'open') return showToast('Select a valid open bill.', 'warning');
-
-  const clients = Object.entries(state.users).filter(([_, u]) => u.role === 'client');
-  if (!clients.length) return showToast('No clients to split the bill with.', 'warning');
-
-  const splitAmount = parseAmount(originalBill.amount / clients.length);
-  if (splitAmount <= 0) return showToast('Amount too small to split.', 'warning');
-
-  const writes = [];
-  const timestamp = nowIso();
-
-  // Close original master bill
-  writes.push(db.ref(`bills/${billId}`).update({ status: 'split', splitAt: timestamp }));
-
-  // Distribute it to all client accounts
-  clients.forEach(([clientId, client]) => {
-    const newBillId = uid('bill');
-    writes.push(db.ref(`bills/${newBillId}`).set({
-      userId: clientId,
-      name: `${originalBill.name} (Split)`,
-                                                 amount: splitAmount,
-                                                 dueDate: originalBill.dueDate || '',
-                                                 status: 'open',
-                                                 createdAt: timestamp,
-                                                 parentId: billId
-    }));
-    const ledgerId = uid('ledger');
-    writes.push(db.ref(`ledger/${ledgerId}`).set({
-      userId: clientId,
-      billId: newBillId,
-      type: 'bill_created',
-      title: 'Split Bill Assigned',
-      amount: splitAmount,
-      description: `Your portion of ${originalBill.name}.`,
-      createdAt: timestamp
-    }));
+async function debitBillVault(uid, amount) {
+  const result = await db.ref(`balances/${uid}/staging`).transaction((cur) => {
+    cur = number(cur);
+    if (cur < amount) return;
+    return number(cur - amount);
   });
-
-  await Promise.all(writes);
-  modals.splitBill.hide();
-  showToast(`Bill successfully split among ${clients.length} clients.`, 'success');
+  return result.committed;
 }
 
-async function makeDeposit(userIdOverride=null){
-  const userId = sanitizeUserId(userIdOverride || els.depositUser.value);
-  const amount = parseAmount(els.depositAmount.value);
-  const memo = String(els.depositMemo.value || '').trim();
-  if (!userId || Number.isNaN(amount) || amount <= 0) return showToast('Select a client and enter a valid deposit amount.', 'warning');
+async function payBill(billId) {
+  const bill = bills[billId];
+  if (!bill || bill.status !== 'open') return showToast('This bill is no longer open.', 'warning');
+  if (!isAdmin() && bill.userId !== currentUser) return showToast('You cannot pay this bill.', 'danger');
 
-  const result = await updateBalanceTransaction(userId, balance => ({ ...balance, personal: Number((balance.personal + amount).toFixed(2)) }));
-  if (!result.committed) return showToast('Deposit could not be completed.', 'danger');
+  const amount = number(bill.amount);
+  const committed = await debitBillVault(bill.userId, amount);
+  if (!committed) return showToast('Not enough money in the bill vault.', 'danger');
 
-  await appendLedger({
-    userId,
-    type:'deposit',
-    title:'Deposit posted',
-    amount,
-    description: memo || 'Admin deposit to checking.'
-  });
+  await db.ref(`bills/${billId}`).update({ status: 'paid', paidAt: nowIso(), paidBy: currentUser });
+  await createLedgerEntry({ type: 'bill_paid', userId: bill.userId, amount, title: 'Shared bill paid', description: `${bill.name} paid from bill vault by ${users[currentUser]?.name || currentUser}.` });
+  showToast('Shared bill paid and recorded in ledger.', 'success');
+}
+window.payBill = payBill;
 
-  modals.deposit.hide();
-  els.depositAmount.value = '';
-  els.depositMemo.value = '';
-  showToast(`Deposit posted to ${getUser(userId)?.name || userId}.`, 'success');
+async function payPrivateBill(billId) {
+  const bill = getPrivateBillMap(currentUser)[billId];
+  if (!bill || bill.status !== 'open') return showToast('This private bill is no longer open.', 'warning');
+  const amount = number(bill.amount);
+  const committed = await debitBillVault(currentUser, amount);
+  if (!committed) return showToast('Not enough money in the bill vault.', 'danger');
+
+  await db.ref(`privateBills/${currentUser}/${billId}`).update({ status: 'paid', paidAt: nowIso() });
+  await createLedgerEntry({ type: 'private_bill_paid', userId: currentUser, amount, title: 'Private bill paid', description: `${bill.name} paid from your bill vault.` });
+  showToast('Private bill paid from bill vault.', 'success');
+}
+window.payPrivateBill = payPrivateBill;
+
+function bindEvents() {
+  $('login-btn').addEventListener('click', authenticateUser);
+  $('logout-btn').addEventListener('click', logoutUser);
+  $('login-pin').addEventListener('keydown', (e) => e.key === 'Enter' && authenticateUser());
+  $('open-create-client-modal').addEventListener('click', () => clientModal.show());
+  $('open-create-bill-modal-admin').addEventListener('click', () => { $('bill-user').value = $('bill-user').value || activeClientEntries()[0]?.[0] || ''; billModal.show(); });
+  $('open-create-bill-modal-client').addEventListener('click', () => billModal.show());
+  $('open-private-bill-modal').addEventListener('click', () => privateBillModal.show());
+  $('open-transfer-modal').addEventListener('click', () => transferModal.show());
+  $('open-treasury-fund-modal').addEventListener('click', () => treasuryFundModal.show());
+  $('save-client-btn').addEventListener('click', createClient);
+  $('save-bill-btn').addEventListener('click', createSharedBill);
+  $('save-private-bill-btn').addEventListener('click', createPrivateBill);
+  $('save-transfer-btn').addEventListener('click', transferBetweenClientBalances);
+  $('save-treasury-fund-btn').addEventListener('click', fundTreasury);
+  $('execute-treasury-transfer').addEventListener('click', executeTreasuryTransfer);
+  document.querySelectorAll('.tile').forEach((tile) => tile.addEventListener('click', () => openAccountWindow(tile.dataset.openWindow)));
 }
 
-async function transferFunds(){
-  const userId = state.currentUser;
-  const direction = els.transferDirection.value;
-  const amount = parseAmount(els.transferAmount.value);
-  if (Number.isNaN(amount) || amount <= 0) return showToast('Enter a valid transfer amount.', 'warning');
-
-  let failed = null;
-  const result = await updateBalanceTransaction(userId, balance => {
-    const next = { ...balance };
-    if (direction === 'personal_to_staging') {
-      if (next.personal < amount) { failed = 'Insufficient checking funds.'; return; }
-      next.personal = Number((next.personal - amount).toFixed(2));
-      next.staging = Number((next.staging + amount).toFixed(2));
-    } else {
-      if (next.staging < amount) { failed = 'Insufficient staging funds.'; return; }
-      next.staging = Number((next.staging - amount).toFixed(2));
-      next.personal = Number((next.personal + amount).toFixed(2));
-    }
-    return next;
-  });
-
-  if (!result.committed || failed) return showToast(failed || 'Transfer failed.', 'danger');
-
-  const description = direction === 'personal_to_staging'
-  ? 'Funds moved from checking to staging.'
-  : 'Funds moved from staging to checking.';
-  await appendLedger({ userId, type:'transfer', title:'Funds transferred', amount, description });
-  modals.transfer.hide();
-  els.transferAmount.value = '';
-  showToast('Transfer completed.', 'success');
+function initModals() {
+  clientModal = new bootstrap.Modal($('clientModal'));
+  billModal = new bootstrap.Modal($('billModal'));
+  privateBillModal = new bootstrap.Modal($('privateBillModal'));
+  transferModal = new bootstrap.Modal($('transferModal'));
+  treasuryFundModal = new bootstrap.Modal($('treasuryFundModal'));
 }
 
-async function payBill(billIdOverride=null, userIdOverride=null){
-  const billId = billIdOverride || els.payBillSelect.value;
-  const bill = state.bills[billId];
-  const userId = userIdOverride || state.currentUser;
-  if (!bill || bill.status === 'paid' || bill.status === 'split') return showToast('Select an open bill.', 'warning');
-  const amount = Number(bill.amount || 0);
-  let failed = null;
-
-  const result = await updateBalanceTransaction(userId, balance => {
-    const next = { ...balance };
-    if (next.staging < amount) { failed = 'Not enough staging funds to pay this bill.'; return; }
-    next.staging = Number((next.staging - amount).toFixed(2));
-    return next;
-  });
-
-  if (!result.committed || failed) return showToast(failed || 'Bill payment failed.', 'danger');
-
-  await db.ref(`bills/${billId}`).update({ status:'paid', paidAt: nowIso() });
-  await appendLedger({
-    userId,
-    billId,
-    type:'bill_paid',
-    title:'Bill paid',
-    amount,
-    description: `${bill.name} paid from staging.`
-  });
-
-  if (modals.payBill) modals.payBill.hide();
-  showToast(`${bill.name} was paid successfully.`, 'success');
+function attemptSessionRestore() {
+  const saved = localStorage.getItem(SESSION_KEY);
+  if (saved && users[saved]?.status === 'active') {
+    currentUser = saved;
+    $('login-wrapper').style.display = 'none';
+    $('app-wrapper').style.display = 'block';
+  }
 }
 
-function openDepositModal(prefillUserId=''){
-  populateClientSelect('deposit-user', { placeholder:'Select client' });
-  els.depositUser.value = prefillUserId;
-  els.depositAmount.value = '';
-  els.depositMemo.value = '';
-  modals.deposit.show();
+function subscribe() {
+  db.ref('users').on('value', (snap) => { users = snap.val() || {}; ensureAdminBootstrap(); attemptSessionRestore(); renderAll(); });
+  db.ref('balances').on('value', (snap) => { balances = snap.val() || {}; renderAll(); });
+  db.ref('bills').on('value', (snap) => { bills = snap.val() || {}; renderAll(); });
+  db.ref('privateBills').on('value', (snap) => { privateBills = snap.val() || {}; renderAll(); });
+  db.ref('ledger').on('value', (snap) => { ledger = snap.val() || {}; renderAll(); });
+  db.ref('system').on('value', (snap) => { system = snap.val() || { treasury: { reserve: 0 } }; renderAll(); });
 }
 
-function openBillModal(prefillUserId=''){
-  populateClientSelect('bill-user', { placeholder:'Select client' });
-  els.billUser.value = prefillUserId || (getUser(state.currentUser)?.role === 'client' ? state.currentUser : '');
-  modals.bill.show();
-}
-
-function openPayBillModal(){
-  populatePayBillSelect();
-  modals.payBill.show();
-}
-
-function wireEventListeners(){
-  els.loginBtn.addEventListener('click', authenticateUser);
-  els.loginUser.addEventListener('keydown', e => { if (e.key === 'Enter') authenticateUser(); });
-  els.loginPin.addEventListener('keydown', e => { if (e.key === 'Enter') authenticateUser(); });
-  els.logoutBtn.addEventListener('click', logoutUser);
-
-  els.openCreateClientModal.addEventListener('click', () => modals.client.show());
-  els.openCreateBillModalAdmin.addEventListener('click', () => openBillModal());
-  els.openCreateBillModalClient.addEventListener('click', () => openBillModal(state.currentUser));
-  els.openTransferModal.addEventListener('click', () => modals.transfer.show());
-  els.openDepositModal.addEventListener('click', () => openDepositModal());
-  els.openPayBillModal.addEventListener('click', openPayBillModal);
-
-  // NEW: Wire up the Split Bill modal
-  els.openSplitBillModal.addEventListener('click', () => {
-    populateSplitBillSelect();
-    modals.splitBill.show();
-  });
-
-  els.saveClientBtn.addEventListener('click', () => createClient().catch(handleError));
-  els.saveBillBtn.addEventListener('click', () => recordBill().catch(handleError));
-
-  // NEW: Wire up the Split Bill execute button
-  els.confirmSplitBillBtn.addEventListener('click', () => splitBill().catch(handleError));
-
-  els.saveTransferBtn.addEventListener('click', () => transferFunds().catch(handleError));
-  els.saveDepositBtn.addEventListener('click', () => makeDeposit().catch(handleError));
-  els.confirmPayBillBtn.addEventListener('click', () => payBill().catch(handleError));
-
-  document.addEventListener('click', event => {
-    const tile = event.target.closest('.tile');
-    if (tile) {
-      const kind = tile.dataset.openWindow;
-      if (kind) openWindow(kind);
-      return;
-    }
-
-    const actionButton = event.target.closest('[data-action]');
-    if (!actionButton) return;
-    const action = actionButton.dataset.action;
-    const userId = actionButton.dataset.user;
-    if (action === 'open-overview') openWindow('client_overview', userId);
-    if (action === 'deposit') openDepositModal(userId);
-    if (action === 'pay-next') {
-      const nextBill = getOpenBillsForUser(userId).sort((a,b) => new Date(a.dueDate || 0) - new Date(b.dueDate || 0))[0];
-      if (!nextBill) return showToast('This client has no open bills.', 'info');
-      payBill(nextBill.id, userId).catch(handleError);
-    }
-  });
-}
-
-function handleError(error){
-  console.error(error);
-  showToast(error?.message || 'Something went wrong.', 'danger');
-}
-
-function cacheElements(){
-  Object.assign(els, {
-    loginWrapper: qs('login-wrapper'),
-                appWrapper: qs('app-wrapper'),
-                loginUser: qs('login-user'),
-                loginPin: qs('login-pin'),
-                loginBtn: qs('login-btn'),
-                loginErr: qs('login-err'),
-                sessionUserLabel: qs('session-user-label'),
-                clockTime: qs('clockTime'),
-                logoutBtn: qs('logout-btn'),
-                clientWelcomeName: qs('client-welcome-name'),
-                adminTotalCash: qs('admin-total-cash'),
-                adminTotalStaging: qs('admin-total-staging'),
-                adminOpenBillsTotal: qs('admin-open-bills-total'),
-                adminUsersBody: qs('adminUsersBody'),
-                dashPersonalBal: qs('dash-personal-bal'),
-                dashStagingBal: qs('dash-staging-bal'),
-                clientTotalDue: qs('client-total-due'),
-                openCreateClientModal: qs('open-create-client-modal'),
-                openCreateBillModalAdmin: qs('open-create-bill-modal-admin'),
-                openCreateBillModalClient: qs('open-create-bill-modal-client'),
-                openTransferModal: qs('open-transfer-modal'),
-                openDepositModal: qs('open-deposit-modal'),
-                openPayBillModal: qs('open-pay-bill-modal'),
-                openSplitBillModal: qs('open-split-bill-modal'), // NEW
-                newClientUsername: qs('new-client-username'),
-                newClientName: qs('new-client-name'),
-                newClientPin: qs('new-client-pin'),
-                newClientOpening: qs('new-client-opening'),
-                saveClientBtn: qs('save-client-btn'),
-                billUser: qs('bill-user'),
-                billName: qs('bill-name'),
-                billAmount: qs('bill-amount'),
-                billDueDate: qs('bill-due-date'),
-                saveBillBtn: qs('save-bill-btn'),
-                splitBillSelect: qs('split-bill-select'), // NEW
-                confirmSplitBillBtn: qs('confirm-split-bill-btn'), // NEW
-                transferDirection: qs('transfer-direction'),
-                transferAmount: qs('transfer-amount'),
-                saveTransferBtn: qs('save-transfer-btn'),
-                depositUser: qs('deposit-user'),
-                depositAmount: qs('deposit-amount'),
-                depositMemo: qs('deposit-memo'),
-                saveDepositBtn: qs('save-deposit-btn'),
-                payBillSelect: qs('pay-bill-select'),
-                confirmPayBillBtn: qs('confirm-pay-bill-btn')
-  });
-}
-
-function initModals(){
-  modals = {
-    client: new bootstrap.Modal(qs('clientModal')),
-    bill: new bootstrap.Modal(qs('billModal')),
-    splitBill: new bootstrap.Modal(qs('splitBillModal')), // NEW
-    transfer: new bootstrap.Modal(qs('transferModal')),
-    deposit: new bootstrap.Modal(qs('depositModal')),
-    payBill: new bootstrap.Modal(qs('payBillModal'))
-  };
-}
-
-async function init(){
-  cacheElements();
-  initModals();
-  wireEventListeners();
-  await ensureAdminBootstrap();
-  attachRealtimeListeners();
-}
-
-init().catch(handleError);
+initModals();
+bindEvents();
+subscribe();

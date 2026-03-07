@@ -1,54 +1,46 @@
-# Home Financial Center — Fixed Glass Rewrite
+# Home Financial Center
 
-This package fully rewrites the uploaded HFC app and fixes the structural issues in the previous version.
+This version keeps the exact filenames:
 
-## What was fixed
+- `index.html`
+- `script.js`
+- `account.html`
+- `account.js`
 
-- unified the data model around top-level `balances/`
-- removed broken placeholder logic
-- fixed tile clicks so every tile opens its own dedicated account window
-- added session restore
-- added admin bootstrap (`admin / 0000`)
-- added client creation
-- added admin deposits
-- added bill creation
-- added client transfers between checking and staging
-- added bill payment from staging
-- added live ledger feeds in both the dashboard and popup windows
-- rebuilt the UI with a stronger iPhone-style glass look
+## What was added
 
-## Files
+- stronger glass / iPhone-style visual treatment
+- more hover, rise, shimmer, and ambient background animation
+- admin treasury reserve that can fund any user checking or bill-vault balance
+- system-generated account numbers for clients
+- user bill vault for money set aside to pay bills
+- user private bill planner under `privateBills/{userId}`
+- automatic totals for shared bills, private bills, and bill-vault coverage
+- paying shared bills from the bill vault
+- paying private bills from the bill vault
+- account windows for:
+  - checking
+  - bill vault
+  - shared bills
+  - private bills
+  - admin treasury
+  - admin totals
+  - client overview
 
-- `index_fixed_glass.html` — main dashboard UI
-- `script_fixed_glass.js` — main dashboard logic
-- `account_fixed_glass.html` — popup account window UI
-- `account_fixed_glass.js` — popup account window logic
-
-## Firebase paths used
+## Database paths
 
 - `users/`
 - `balances/`
-- `bills/`
+- `bills/` for shared bills visible to treasury
+- `privateBills/{userId}/` for user planner bills
 - `ledger/`
+- `system/treasury/reserve`
 
-## Firebase config currently included
+## Important note about privacy
 
-```js
-{
-  databaseURL: 'https://homefund-3b81a-default-rtdb.firebaseio.com/',
-  projectId: 'homefund-3b81a',
-  authDomain: 'homefund-3b81a.firebaseapp.com',
-  storageBucket: 'homefund-3b81a.appspot.com'
-}
-```
+Private bills are separated in the app and not shown in admin windows, but this is still a client-side Firebase app. Real privacy requires Firebase Database Rules or server-side enforcement.
 
-If your project also requires `apiKey`, `appId`, or `messagingSenderId`, add them to both JS files.
+## Current admin login
 
-## Deploy
-
-Rename these files for live use:
-
-- `index_fixed_glass.html` → `index.html`
-- `script_fixed_glass.js` → `script.js`
-- `account_fixed_glass.html` → `account.html`
-- `account_fixed_glass.js` → `account.js`
+- username: `admin`
+- pin: `0000`
