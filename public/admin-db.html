@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HFC Admin Backend</title>
+  <style>
+    :root {
+      --bg: #09111f;
+      --panel: rgba(255,255,255,.08);
+      --border: rgba(255,255,255,.12);
+      --text: #eef4ff;
+      --muted: #a6b3cc;
+      --accent: #6ea8ff;
+      --good: #34d399;
+      --warn: #f59e0b;
+      --bad: #fb7185;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, Arial, sans-serif;
+      background: radial-gradient(circle at top, #13325d 0%, #09111f 45%, #060b14 100%);
+      color: var(--text);
+    }
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 24px; }
+    .glass {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      backdrop-filter: blur(18px);
+      border-radius: 18px;
+      box-shadow: 0 16px 40px rgba(0,0,0,.24);
+    }
+    .top {
+      display: grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+    .hero { padding: 24px; }
+    h1, h2, h3 { margin: 0 0 12px; }
+    .muted { color: var(--muted); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 18px;
+    }
+    .card { padding: 16px; }
+    .label { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+    .value { font-size: 28px; margin-top: 8px; font-weight: 700; }
+    .auth, .tools, .db, .results { padding: 20px; }
+    input, select, textarea, button {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.06);
+      color: var(--text);
+      padding: 12px 14px;
+      font: inherit;
+    }
+    textarea { min-height: 140px; resize: vertical; }
+    button {
+      cursor: pointer;
+      background: linear-gradient(135deg, rgba(110,168,255,.9), rgba(74,222,128,.75));
+      color: #09111f;
+      font-weight: 700;
+    }
+    button.secondary {
+      background: rgba(255,255,255,.08);
+      color: var(--text);
+    }
+    .row { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; margin-bottom: 12px; }
+    .row3 { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; margin-bottom: 12px; }
+    .stack { display: grid; gap: 12px; }
+    .main { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 13px;
+      color: #dbeafe;
+    }
+    .status { margin-top: 12px; min-height: 22px; color: var(--muted); }
+    @media (max-width: 900px) {
+      .top, .main, .grid { grid-template-columns: 1fr; }
+      .row, .row3 { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <section class="glass hero">
+        <div class="muted">Private backend console</div>
+        <h1>HFC Treasury + Database Admin</h1>
+        <p class="muted">This console logs into your private Node backend, not the public Firebase client. It is meant for treasury control, user lifecycle changes, bill management, and direct database inspection.</p>
+        <div class="grid">
+          <div class="glass card"><div class="label">Users</div><div class="value" id="sum-users">0</div></div>
+          <div class="glass card"><div class="label">Active</div><div class="value" id="sum-active">0</div></div>
+          <div class="glass card"><div class="label">Checking</div><div class="value" id="sum-checking">$0.00</div></div>
+          <div class="glass card"><div class="label">Vault</div><div class="value" id="sum-vault">$0.00</div></div>
+        </div>
+      </section>
+      <section class="glass auth">
+        <h2>Admin Session</h2>
+        <div class="stack">
+          <input type="password" id="pin" placeholder="Admin PIN" />
+          <div class="row">
+            <button id="loginBtn">Login</button>
+            <button id="logoutBtn" class="secondary">Logout</button>
+          </div>
+          <div class="status" id="authStatus">Not authenticated</div>
+        </div>
+      </section>
+    </div>
+
+    <div class="main">
+      <section class="glass tools">
+        <h2>Treasury + User Actions</h2>
+        <div class="stack">
+          <h3>Create User</h3>
+          <div class="row"><input id="newUsername" placeholder="username" /><input id="newName" placeholder="full name" /></div>
+          <div class="row3"><input id="newPin" placeholder="PIN" /><input id="newChecking" type="number" step="0.01" placeholder="opening checking" /><input id="newVault" type="number" step="0.01" placeholder="opening vault" /></div>
+          <button id="createUserBtn">Create User</button>
+
+          <h3>Treasury Transfer</h3>
+          <div class="row"><input id="treasuryUser" placeholder="user id" /><select id="treasuryTarget"><option value="personal">Checking</option><option value="staging">Vault</option></select></div>
+          <div class="row"><input id="treasuryAmount" type="number" step="0.01" placeholder="amount" /><input id="treasuryMemo" placeholder="memo" /></div>
+          <button id="treasuryBtn">Send Treasury Funds</button>
+
+          <h3>Change User Status</h3>
+          <div class="row"><input id="statusUser" placeholder="user id" /><select id="statusValue"><option value="open">Open</option><option value="closed">Closed</option></select></div>
+          <button id="statusBtn">Update Status</button>
+
+          <h3>Delete User</h3>
+          <div class="row"><input id="deleteUser" placeholder="user id" /><button id="deleteBtn" class="secondary">Delete User</button></div>
+        </div>
+      </section>
+
+      <section class="glass tools">
+        <h2>Bill + Database Actions</h2>
+        <div class="stack">
+          <h3>Create Bill</h3>
+          <div class="row"><input id="billUser" placeholder="user id" /><input id="billName" placeholder="bill name" /></div>
+          <div class="row3"><input id="billAmount" type="number" step="0.01" placeholder="amount" /><input id="billDate" type="date" /><select id="billVisibility"><option value="shared">Shared</option><option value="private">Private</option></select></div>
+          <button id="billBtn">Create Bill</button>
+
+          <h3>Pay Bill</h3>
+          <div class="row"><input id="payBillId" placeholder="bill id" /><select id="payBillScope"><option value="shared">Shared</option><option value="private">Private</option></select></div>
+          <button id="payBillBtn">Pay Bill From Vault</button>
+
+          <h3>Read Database Path</h3>
+          <div class="row"><input id="dbReadPath" placeholder="users / balances / ledger / bills" /><button id="readDbBtn" class="secondary">Read Path</button></div>
+
+          <h3>Write Database Path</h3>
+          <input id="dbWritePath" placeholder="path to write" />
+          <textarea id="dbWriteValue" placeholder='JSON value, example: {"hello":"world"}'></textarea>
+          <div class="row"><button id="writeDbBtn">Write Path</button><button id="deleteDbBtn" class="secondary">Delete Path</button></div>
+        </div>
+      </section>
+    </div>
+
+    <section class="glass results" style="margin-top:20px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px; margin-bottom: 12px;">
+        <div>
+          <h2>Output</h2>
+          <div class="muted">Live responses from the backend</div>
+        </div>
+        <button id="refreshBtn" class="secondary" style="max-width:180px;">Refresh Overview</button>
+      </div>
+      <pre id="output">No output yet.</pre>
+    </section>
+  </div>
+  <script src="admin-db.js"></script>
+</body>
+</html>
