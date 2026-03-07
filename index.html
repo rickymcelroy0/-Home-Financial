@@ -1,1188 +1,247 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Home Financial Center</title>
-
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
-
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-
-    <style>
-        /* ==========================================
-           1. CORE VARIABLES & TYPOGRAPHY
-           ========================================== */
-        :root {
-            --bs-primary: #0A2540;
-            --bs-secondary: #636B74;
-            --bs-light: #F6F9FC;
-            --bs-dark: #1A1F36;
-            --bs-success: #00D084;
-            --bs-info: #2B6CB0;
-            --bs-warning: #F5A623;
-        }
-
-        body { font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: var(--bs-light); color: #3C4257; }
-        h1, h2, h3, h4, h5, h6 { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: var(--bs-dark); font-weight: 600; }
-
-        /* ==========================================
-           2. PIXEL UI & MATERIAL DESIGN EFFECTS
-           ========================================== */
-        .navbar-custom { background: rgba(255, 255, 255, 0.85) !important; backdrop-filter: blur(12px); border-bottom: 1px solid rgba(227, 238, 245, 0.5); padding: 12px 0; }
-        .navbar-brand { font-weight: 700; color: var(--bs-primary) !important; font-size: 1.25rem; text-transform: uppercase; letter-spacing: 0.5px;}
-
-        .modal-content { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(16px); border-radius: 16px; border: 1px solid rgba(255,255,255,0.2); box-shadow: 0 24px 48px rgba(0,0,0,0.15); }
-
-        .btn { border-radius: 24px !important; position: relative; overflow: hidden; transition: background-color 0.2s, transform 0.1s, box-shadow 0.2s, color 0.2s, border-color 0.2s; font-weight: 600; letter-spacing: 0.5px; }
-        .btn:active { transform: scale(0.97); }
-
-        .btn-primary { background-color: var(--bs-primary); border-color: var(--bs-primary); }
-        .btn-primary:hover { background-color: #06182C; border-color: #06182C; color: #fff; box-shadow: 0 4px 12px rgba(10, 37, 64, 0.2);}
-        .btn-dark { background-color: var(--bs-dark); border-color: var(--bs-dark); }
-        .btn-dark:hover { background-color: var(--bs-primary); border-color: var(--bs-primary); }
-        .btn-outline-primary { border-color: #E3E8EE; color: var(--bs-primary); }
-        .btn-outline-primary:hover { background-color: rgba(10, 37, 64, 0.05); color: var(--bs-primary); border-color: var(--bs-primary); }
-
-        .ripple-effect { position: absolute; border-radius: 50%; transform: scale(0); animation: ripple-anim 600ms linear; background-color: rgba(255, 255, 255, 0.4); pointer-events: none; }
-        .btn-light .ripple-effect, .btn-outline-secondary .ripple-effect, .btn-outline-primary .ripple-effect { background-color: rgba(0, 0, 0, 0.1); }
-        @keyframes ripple-anim { to { transform: scale(4); opacity: 0; } }
-
-        .card { border: 1px solid rgba(227, 238, 238, 0.8); border-radius: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.02); margin-bottom: 25px; transition: transform 0.25s, box-shadow 0.25s; background: #fff; }
-        .card:hover { transform: translateY(-3px); box-shadow: 0 12px 24px rgba(10, 37, 64, 0.06); }
-        .interactive-card { cursor: pointer; border: 2px solid transparent; }
-        .interactive-card:hover { border-color: var(--bs-primary); }
-        .card-header { background-color: transparent; border-bottom: 1px solid #E3E8EE; padding: 1.25rem 1.5rem; }
-        .card-header h5 { margin: 0; font-size: 1rem; color: var(--bs-dark); text-transform: uppercase; letter-spacing: 0.5px;}
-
-        /* ==========================================
-           3. UI STATUS INDICATORS & ANIMATIONS
-           ========================================== */
-        @keyframes pulseYellow {
-            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(245, 166, 35, 0.7); }
-            70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(245, 166, 35, 0); }
-            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(245, 166, 35, 0); }
-        }
-        .dot-pending { height: 10px; width: 10px; background-color: var(--bs-warning); border-radius: 50%; display: inline-block; margin-right: 6px; animation: pulseYellow 1.5s infinite; }
-        .text-pending { color: var(--bs-warning) !important; }
-        .bg-pending-row { background-color: rgba(245, 166, 35, 0.05) !important; }
-
-        .form-control, .form-select { border-radius: 12px; padding: 0.6rem 1rem; border: 1px solid #E3E8EE; transition: all 0.2s;}
-        .form-control:focus, .form-select:focus { box-shadow: 0 0 0 3px rgba(10, 37, 64, 0.1); border-color: var(--bs-primary); }
-
-        .table { margin-bottom: 0; }
-        .table th { background-color: rgba(246, 249, 252, 0.5); color: #4F566B; font-weight: 600; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.5px; border-bottom: 1px solid #E3E8EE;}
-        .table td { vertical-align: middle; font-size: 0.85rem; color: #3C4257; font-weight: 500;}
-
-        .summary-badge { padding: 20px; height: 100%; border-left: 4px solid var(--bs-primary); }
-        .summary-badge.green { border-left-color: var(--bs-success); }
-        .summary-badge h6 { color: #697386; font-size: 0.75rem; text-transform: uppercase; margin-bottom: 8px; font-weight: 600; letter-spacing: 0.5px;}
-        .summary-badge h3 { margin: 0; font-size: 1.8rem; color: var(--bs-dark); font-weight: 700;}
-
-        .live-indicator { font-size: 0.7rem; font-weight: 600; color: #005F4A; background: #D1F4E0; padding: 6px 12px; border-radius: 12px; display: inline-flex; align-items: center; letter-spacing: 0.5px;}
-        .live-dot { width: 6px; height: 6px; background: #00D084; border-radius: 50%; margin-right: 6px; }
-
-        .chat-box { background: var(--bs-light); border-radius: 12px; height: 250px; overflow-y: auto; padding: 15px; border: 1px solid #E3E8EE; margin-bottom: 15px;}
-        .chat-msg { background: #fff; padding: 12px 15px; border-radius: 12px; margin-bottom: 10px; border: 1px solid #E3E8EE; font-size: 0.85rem; box-shadow: 0 2px 4px rgba(0,0,0,0.02);}
-
-        /* ==========================================
-           4. SCREENS & SYSTEM STATES
-           ========================================== */
-        #login-wrapper { height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--bs-dark); position: relative;}
-        .login-card { z-index: 2; width: 100%; max-width: 420px; background: #fff; padding: 40px; border-radius: 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.3); text-align: center;}
-
-        #global-lock-screen, #shutdown-screen { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(26, 31, 54, 0.98); backdrop-filter: blur(10px); z-index: 2000; flex-direction: column; justify-content: center; align-items: center; text-align: center; color: white;}
-        #toast-container { position: fixed; top: 20px; right: 20px; z-index: 9999; }
-
-        .view { display: none; animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
-        .view.active { display: block; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-
-        .wallet-box { background: #fff; border: 1px solid #E3E8EE; border-radius: 16px; padding: 20px; }
-        .wallet-box h6 { font-size: 0.75rem; color: #697386; text-transform: uppercase; margin-bottom: 8px; font-weight: 700; letter-spacing: 0.5px;}
-        .wallet-box h3 { margin: 0; font-size: 2rem; color: var(--bs-primary); font-family: monospace; font-weight: bold;}
-
-        .bank-nav-scroll::-webkit-scrollbar { display: none; }
-        .bank-nav-scroll { -ms-overflow-style: none; scrollbar-width: none; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Home Financial Center</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+  <style>
+    :root{
+      --hfc-navy:#0a2540;
+      --hfc-slate:#1f2937;
+      --hfc-bg:#f6f9fc;
+      --hfc-border:#e5e7eb;
+    }
+    body{background:var(--hfc-bg); color:#334155; font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}
+    .navbar-custom{background:rgba(255,255,255,.92); backdrop-filter:blur(10px); border-bottom:1px solid var(--hfc-border);}
+    .card.hfc-card{border:1px solid var(--hfc-border); border-radius:18px; box-shadow:0 10px 30px rgba(15,23,42,.05);}
+    .tile{cursor:pointer; transition:transform .18s ease, box-shadow .18s ease;}
+    .tile:hover{transform:translateY(-2px); box-shadow:0 14px 30px rgba(15,23,42,.08);}
+    .view{display:none}
+    .view.active{display:block}
+    .monospace{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    .ledger-row small{display:block;color:#64748b}
+    #login-wrapper{min-height:100vh;background:linear-gradient(135deg,#0a2540,#1e3a5f);}
+    .section-label{font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;color:#64748b;font-weight:700}
+  </style>
 </head>
 <body>
+  <div id="toast-container" class="position-fixed top-0 end-0 p-3" style="z-index:1080"></div>
 
-<input type="hidden" id="acc_associated" value="0">
-<div id="toast-container"></div>
-
-<div id="login-wrapper">
-    <div class="login-card">
-        <h3 class="mb-1 fw-bold" style="color: var(--bs-primary); text-transform: uppercase; letter-spacing: 0.5px;"><i class="fas fa-landmark me-2"></i> Home Financial</h3>
-        <p class="text-muted mb-4 pb-3 border-bottom" style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;">Secure Identity Verification</p>
-
-        <div class="mb-3 text-start">
-            <label class="form-label text-muted" style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase;">Username</label>
-            <input type="text" id="login-user" class="form-control bg-light text-center font-monospace" placeholder="USERNAME" autocomplete="off" style="letter-spacing: 2px; font-size: 1.1rem;" onkeyup="checkLoginEnter(event)">
-        </div>
-
-        <div class="mb-4 text-start">
-            <label class="form-label text-muted" style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase;">Authentication PIN</label>
-            <input type="password" id="login-pin" class="form-control bg-light text-center font-monospace" placeholder="••••" style="letter-spacing: 8px; font-size: 1.2rem;" onkeyup="checkLoginEnter(event)">
-        </div>
-
-        <button class="btn btn-primary w-100 py-3" onclick="authenticateUser()">AUTHORIZE SESSION</button>
-        <div id="login-err" class="alert alert-danger mt-3 py-2 d-none" style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; border-radius: 12px;">[ AUTHENTICATION FAILED ]</div>
+  <div id="login-wrapper" class="d-flex align-items-center justify-content-center p-3">
+    <div class="card hfc-card p-4 p-md-5" style="max-width:420px;width:100%;">
+      <div class="text-center mb-4">
+        <h2 class="fw-bold mb-1" style="color:var(--hfc-navy)"><i class="fa-solid fa-building-columns me-2"></i>Home Financial Center</h2>
+        <div class="text-muted">Secure account console</div>
+      </div>
+      <div class="mb-3">
+        <label class="section-label mb-2">Username</label>
+        <input id="login-user" type="text" class="form-control form-control-lg" placeholder="username">
+      </div>
+      <div class="mb-3">
+        <label class="section-label mb-2">PIN</label>
+        <input id="login-pin" type="password" maxlength="8" class="form-control form-control-lg" placeholder="••••">
+      </div>
+      <button id="login-btn" class="btn btn-primary btn-lg w-100">Authorize Session</button>
+      <div id="login-err" class="alert alert-danger mt-3 d-none mb-0"></div>
+      <div class="small text-muted mt-3">Default admin: <span class="monospace">admin / 0000</span></div>
     </div>
-</div>
+  </div>
 
-<div id="global-lock-screen">
-    <h2 id="lock-screen-title" class="text-white mb-2" style="letter-spacing: 1px;"><i class="fas fa-lock me-2"></i> WORKSPACE SECURED</h2>
-    <p id="lock-screen-sub" class="text-white-50 mb-4 text-uppercase" style="font-size: 0.85rem; letter-spacing: 0.5px;">Authentication required to resume session</p>
-    <input type="password" id="unlock-pin" class="form-control text-center mb-4" style="max-width: 250px; letter-spacing: 8px; font-size: 1.5rem; border-radius: 16px; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2);" placeholder="••••" onkeyup="if(event.key === 'Enter') unlockSession()">
-    <button class="btn btn-primary btn-lg" id="btn-unlock" style="width: 250px;" onclick="unlockSession()">RESUME SESSION</button>
-    <p id="unlock-err" class="text-danger mt-3 d-none fw-bold" style="font-size: 0.85rem;">INCORRECT PIN</p>
-</div>
-<div id="shutdown-screen">
-    <h2 class="text-danger font-monospace mb-3" style="letter-spacing: 1px;"><i class="fas fa-power-off me-2"></i> SYSTEM TERMINATED</h2>
-    <p class="text-white-50" style="font-size: 0.9rem;">The secure financial workspace has been closed.<br>Refresh the browser to reboot.</p>
-</div>
-
-<div id="app-wrapper" class="p-0" style="display: none;">
-    <nav class="navbar navbar-expand-lg navbar-custom sticky-top z-index-1000">
-        <div class="container-fluid px-4">
-            <a class="navbar-brand d-flex align-items-center" href="#"><i class="fas fa-landmark me-2"></i> Home Financial Center</a>
-            <div class="d-flex align-items-center">
-                <div class="live-indicator me-4 shadow-sm" id="connectionStatus"><span class="live-dot"></span>SECURE . ONLINE</div>
-                <div class="text-end me-4 d-none d-sm-block">
-                    <div id="clockDate" class="text-muted fw-bold" style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px;">Loading...</div>
-                    <div id="clockTime" class="fw-bold" style="color: var(--bs-dark); font-size: 1rem;">--:--:--</div>
-                </div>
-                <div class="dropdown">
-                    <button class="btn btn-light rounded-circle p-0 d-flex align-items-center justify-content-center shadow-sm" style="width: 42px; height: 42px; border: 1px solid #E3E8EE;" type="button" id="userMenu" data-bs-toggle="dropdown" aria-expanded="false">
-                        <span id="avatar-icon" class="fw-bold" style="color: var(--bs-dark);">?</span>
-                    </button>
-                    <ul class="dropdown-menu dropdown-menu-end shadow-lg border mt-2" aria-labelledby="userMenu" style="border-radius: 16px; border-color: #E3E8EE; padding: 10px;">
-                        <li><h6 class="dropdown-header text-center border-bottom pb-2 mb-2 font-monospace" id="dropdown-user-name">USER</h6></li>
-                        <li><a class="dropdown-item py-2 fw-bold text-muted rounded" href="#" onclick="lockSession()" style="font-size: 0.85rem;"><i class="fas fa-lock me-2"></i> Lock Workspace</a></li>
-                        <li><a class="dropdown-item py-2 fw-bold text-muted rounded" href="#" onclick="logoutUser()" style="font-size: 0.85rem;"><i class="fas fa-sign-out-alt me-2"></i> Sign Out</a></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item py-2 text-danger fw-bold rounded" href="#" onclick="shutDownSystem()" style="font-size: 0.85rem;"><i class="fas fa-power-off me-2"></i> Shut Down</a></li>
-                    </ul>
-                </div>
-            </div>
+  <div id="app-wrapper" style="display:none;">
+    <nav class="navbar navbar-expand-lg navbar-custom sticky-top py-3">
+      <div class="container-fluid px-4">
+        <span class="navbar-brand fw-bold" style="color:var(--hfc-navy)"><i class="fa-solid fa-building-columns me-2"></i>HFC Billing</span>
+        <div class="d-flex align-items-center gap-3">
+          <div class="text-muted small" id="session-user-label"></div>
+          <div class="fw-bold" id="clockTime">--:--:--</div>
+          <button class="btn btn-outline-danger btn-sm" id="logout-btn">Sign Out</button>
         </div>
+      </div>
     </nav>
 
-    <div class="container-fluid px-4 py-4" style="max-width: 1200px;">
-
-        <div id="view-admin" class="view">
-            <div class="d-flex justify-content-between align-items-end mb-3 border-bottom pb-3">
-                <div>
-                    <h3 class="fw-bold mb-1" style="color: var(--bs-primary);">Master Administrative Ledger</h3>
-                    <div class="text-muted small fw-bold text-uppercase" style="letter-spacing: 0.5px;">Global System View</div>
-                </div>
-            </div>
-
-            <div class="row g-3 mb-4">
-                <div class="col-md-6">
-                    <div class="card summary-badge green mb-0 border-0">
-                        <h6>Associated Home Fund</h6>
-                        <h3 class="text-success val-total-cash">$0.00</h3>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="card summary-badge mb-0 border-0">
-                        <h6>Total Global Liabilities</h6>
-                        <h3 class="val-total-bills">$0.00</h3>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card mb-4 border-0 shadow" style="background: linear-gradient(135deg, #0A2540 0%, #1A1F36 100%); color: white;">
-                <div class="card-body text-center p-4">
-                    <button class="btn btn-light fw-bold px-4 mx-2 shadow text-primary" onclick="openMasterBankTerminal()"><i class="fas fa-university me-2"></i> CLEARINGHOUSE OVERRIDE</button>
-                    <button class="btn btn-outline-light fw-bold px-4 mx-2" onclick="exportCSV()"><i class="fas fa-download me-2"></i> EXPORT DATA</button>
-                    <button class="btn btn-outline-light fw-bold px-4 mx-2" onclick="openRoster()"><i class="fas fa-history me-2"></i> SYSTEM AUDIT LOG</button>
-                </div>
-            </div>
-
-            <div class="row g-4">
-                <div class="col-lg-12">
-
-                    <div class="card" style="border-top: 4px solid var(--bs-success);">
-                        <div class="card-header d-flex justify-content-between align-items-center">
-                            <h5><i class="fas fa-hand-holding-usd text-muted me-2"></i> Central Treasury Disbursement</h5>
-                        </div>
-                        <div class="card-body bg-light p-3">
-                            <p class="small text-muted mb-3">Distribute funds from the Associated Home Fund directly to a client's Personal Checking account.</p>
-                            <div class="row g-2 align-items-end">
-                                <div class="col-md-4">
-                                    <label class="form-label small fw-bold text-muted mb-0">TARGET CLIENT</label>
-                                    <select id="admin-disburse-target" class="form-select form-select-sm"></select>
-                                </div>
-                                <div class="col-md-4">
-                                    <label class="form-label small fw-bold text-muted mb-0">EXECUTION</label>
-                                    <select id="admin-disburse-type" class="form-select form-select-sm">
-                                        <option value="posted">Immediate (Post)</option>
-                                        <option value="pending">Schedule (Pending)</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-4">
-                                    <label class="form-label small fw-bold text-muted mb-0">AMOUNT</label>
-                                    <div class="input-group input-group-sm shadow-sm rounded-pill overflow-hidden">
-                                        <span class="input-group-text bg-white border-0 fw-bold">$</span>
-                                        <input type="number" id="admin-disburse-amount" class="form-control border-0 fw-bold" placeholder="0.00">
-                                    </div>
-                                </div>
-                            </div>
-                            <button class="btn btn-success w-100 fw-bold mt-3 shadow-sm" onclick="adminDisburseFunds()">AUTHORIZE DISBURSEMENT</button>
-                        </div>
-                    </div>
-
-                    <div class="card" style="border-top: 4px solid var(--bs-info);">
-                        <div class="card-header d-flex justify-content-between align-items-center">
-                            <h5><i class="fas fa-users text-muted me-2"></i> Client Account Management</h5>
-                            <button class="btn btn-primary btn-sm px-3" onclick="openAdminUserModal()"><i class="fas fa-plus me-1"></i> New Account</button>
-                        </div>
-                        <div class="card-body p-0 table-responsive border-bottom">
-                            <table class="table table-hover mb-0 align-middle">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Client Info</th>
-                                        <th>Personal Chk.</th>
-                                        <th>Responsibilities</th>
-                                        <th>Status</th>
-                                        <th style="width: 200px;">Admin Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="adminUsersBody"><tr><td colspan="5" class="text-center text-muted py-4 small">Loading users...</td></tr></tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-lg-6">
-                    <div class="card" style="border-top: 4px solid var(--bs-primary);">
-                        <div class="card-header d-flex justify-content-between align-items-center">
-                            <h5>Master Shared Liabilities</h5>
-                            <button class="btn btn-primary btn-sm px-3" onclick="openAddBillModal()"><i class="fas fa-plus me-1"></i> Record New</button>
-                        </div>
-                        <div class="card-body p-0 table-responsive">
-                            <table class="table table-hover mb-0">
-                                <thead class="table-light"><tr><th>Description</th><th>Total Amount</th><th>Status</th><th style="width: 80px;">Action</th></tr></thead>
-                                <tbody id="masterBillsBody"><tr><td colspan="4" class="text-center text-muted py-4 small">Loading records...</td></tr></tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-lg-6">
-                    <div class="card">
-                        <div class="card-header"><h5>Internal Credit & Loans</h5></div>
-                        <div class="card-body p-0 table-responsive border-bottom">
-                            <table class="table table-hover mb-0">
-                                <thead class="table-light"><tr><th>Borrower</th><th>Lender</th><th>Amount</th><th style="width: 80px;">Action</th></tr></thead>
-                                <tbody id="masterLoansBody"><tr><td colspan="4" class="text-center text-muted py-4 small">Loading...</td></tr></tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
+    <main class="container py-4">
+      <div id="view-admin" class="view">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+          <div>
+            <h2 class="fw-bold mb-1">Administrative Ledger</h2>
+            <div class="text-muted">Manage clients, balances, and bills</div>
+          </div>
+          <div class="d-flex gap-2">
+            <button class="btn btn-dark" id="open-create-client-modal"><i class="fa-solid fa-user-plus me-2"></i>New Client</button>
+            <button class="btn btn-primary" id="open-create-bill-modal-admin"><i class="fa-solid fa-file-invoice-dollar me-2"></i>Record Bill</button>
+          </div>
         </div>
 
-        <div id="view-client" class="view">
-            <div class="mb-4">
-                <div class="d-flex justify-content-between align-items-end mb-3 border-bottom pb-3">
-                    <div>
-                        <h3 class="fw-bold mb-1" style="color: var(--bs-primary);" id="client-welcome-name">Welcome, Client</h3>
-                        <div class="text-muted small fw-bold text-uppercase" style="letter-spacing: 0.5px;">Client Portal Secure Session</div>
-                    </div>
-                    <div>
-                        <button class="btn btn-outline-primary fw-bold px-3 shadow-sm bg-white" onclick="openAccountInfo(currentUser)" style="border-radius: 12px;">
-                            <i class="fas fa-university me-2"></i> <span id="client-acct-btn-text">ACCT: 0000</span> <i class="fas fa-chevron-down ms-2" style="font-size: 0.7rem;"></i>
-                        </button>
-                    </div>
-                </div>
-
-                <div class="d-flex gap-2 pb-2 overflow-auto bank-nav-scroll" style="white-space: nowrap;">
-                    <button class="btn btn-dark btn-sm px-4 fw-bold rounded-pill">Overview Dashboard</button>
-                    <button class="btn btn-outline-secondary btn-sm px-4 fw-bold rounded-pill bg-white" onclick="openBillManager(currentUser)">Bill Pay Hub</button>
-                    <button class="btn btn-outline-secondary btn-sm px-4 fw-bold rounded-pill bg-white" onclick="openGlobalTransferModal()">Transfers & Routing</button>
-                    <button class="btn btn-outline-secondary btn-sm px-4 fw-bold rounded-pill bg-white" onclick="document.getElementById('client-statementMonth').focus()">Account Statements</button>
-                </div>
+        <div class="row g-3 mb-4">
+          <div class="col-md-4">
+            <div class="card hfc-card p-4 tile" data-open-window="admin_global_cash">
+              <div class="section-label">Associated Home Fund</div>
+              <h2 class="mt-2 mb-0" id="admin-total-cash">$0.00</h2>
             </div>
-
-            <div class="row g-3 mb-4">
-                <div class="col-md-4">
-                    <div class="card wallet-box border-0 shadow-sm h-100" style="border-top: 4px solid var(--bs-success);">
-                        <h6>HFC Personal Checking</h6>
-                        <h3 class="text-success" id="dash-personal-bal">$0.00</h3>
-                        <div class="mt-3">
-                            <button class="btn btn-sm btn-success fw-bold rounded-pill px-3 shadow-sm" onclick="openGlobalTransferModal()"><i class="fas fa-exchange-alt me-1"></i> Transfer</button>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="card wallet-box border-0 shadow-sm h-100" style="border-top: 4px solid var(--bs-info);">
-                        <h6>Bills Responsibility Acc</h6>
-                        <h3 class="text-info" id="dash-staging-bal">$0.00</h3>
-                        <div class="mt-3">
-                            <button class="btn btn-sm btn-outline-info fw-bold rounded-pill px-3" onclick="openBillManager(currentUser)"><i class="fas fa-file-invoice me-1"></i> Manage Bills</button>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="card wallet-box border-0 shadow-sm h-100" style="border-top: 4px solid var(--bs-danger);">
-                        <h6>Total Liabilities Due</h6>
-                        <h3 class="text-danger" id="client-total-due">$0.00</h3>
-                        <div class="mt-3">
-                            <span class="small fw-bold text-muted">Awaiting Payment</span>
-                        </div>
-                    </div>
-                </div>
+          </div>
+          <div class="col-md-4">
+            <div class="card hfc-card p-4 tile" data-open-window="admin_global_staging">
+              <div class="section-label">Global Bill Staging</div>
+              <h2 class="mt-2 mb-0" id="admin-total-staging">$0.00</h2>
             </div>
-
-            <div class="row g-4">
-                <div class="col-lg-7">
-                    <div class="card">
-                        <div class="card-header bg-white text-dark d-flex justify-content-between align-items-center">
-                            <h5><i class="fas fa-receipt text-muted me-2"></i> Account Ledger</h5>
-                            <div class="d-flex gap-2">
-                                <input type="month" id="client-statementMonth" class="form-control form-control-sm" style="width: 140px;">
-                                <button class="btn btn-dark btn-sm px-3" onclick="generateStatement(currentUser)">Statement</button>
-                            </div>
-                        </div>
-                        <div class="card-body p-0 table-responsive">
-                            <div style="max-height: 300px; overflow-y: auto;">
-                                <table class="table table-striped table-hover mb-0" style="font-size: 0.85rem;">
-                                    <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
-                                        <tr><th>Date</th><th>Ref #</th><th>Description</th><th class="text-end pe-3">Amount</th></tr>
-                                    </thead>
-                                    <tbody id="client-txnBody"><tr><td colspan="4" class="text-center text-muted py-3">No transactions logged yet.</td></tr></tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-lg-5">
-                    <div class="card">
-                        <div class="card-header"><h5>Issue Credit / Request</h5></div>
-                        <div class="card-body bg-light p-3 border-bottom">
-                            <div class="row g-2 mb-2">
-                                <div class="col-6"><label class="form-label small fw-bold text-muted mb-0" style="font-size:0.7rem;">BORROWER</label>
-                                    <select id="client-borrower" class="form-select form-select-sm dynamic-user-select"></select>
-                                </div>
-                                <div class="col-6"><label class="form-label small fw-bold text-muted mb-0" style="font-size:0.7rem;">LENDER</label>
-                                    <select id="client-lender" class="form-select form-select-sm dynamic-user-select"></select>
-                                </div>
-                            </div>
-                            <div class="row g-2">
-                                <div class="col-6"><input type="text" id="client-reason" class="form-control form-control-sm" placeholder="Reason"></div>
-                                <div class="col-3"><input type="number" id="client-amt" class="form-control form-control-sm" placeholder="$"></div>
-                                <div class="col-3"><button class="btn btn-primary btn-sm w-100" onclick="issueLoan()">Submit</button></div>
-                            </div>
-                        </div>
-                        <div class="card-body p-0 table-responsive">
-                            <table class="table table-hover mb-0">
-                                <thead class="table-light"><tr><th>Target</th><th>Reason</th><th>Amount</th><th style="width: 80px;">Action</th></tr></thead>
-                                <tbody id="client-loansBody"><tr><td colspan="4" class="text-center text-muted py-3 small">Loading...</td></tr></tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <div class="card border-0 shadow-sm border">
-                        <div class="card-body p-3">
-                            <h6 class="fw-bold text-muted text-uppercase mb-2" style="font-size: 0.75rem;">Internal Communications</h6>
-                            <div id="client-chat-box" class="chat-box bg-white shadow-sm border mb-3" style="height: 180px;"></div>
-                            <div class="input-group">
-                                <input type="text" id="client-chat-input" class="form-control" placeholder="Type a message..." onkeyup="if(event.key === 'Enter') sendChat()">
-                                <button class="btn btn-dark px-4" onclick="sendChat()"><i class="fas fa-paper-plane"></i></button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+          </div>
+          <div class="col-md-4">
+            <div class="card hfc-card p-4 tile" data-open-window="admin_open_bills">
+              <div class="section-label">Open Bills</div>
+              <h2 class="mt-2 mb-0" id="admin-open-bills-total">$0.00</h2>
             </div>
+          </div>
         </div>
 
+        <div class="card hfc-card mb-4">
+          <div class="card-header bg-white border-0 pt-4 px-4">
+            <h5 class="mb-0">Client Accounts</h5>
+          </div>
+          <div class="table-responsive px-4 pb-4">
+            <table class="table align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>Client</th>
+                  <th>Checking</th>
+                  <th>Staging</th>
+                  <th>Open Bills</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="adminUsersBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card hfc-card">
+          <div class="card-header bg-white border-0 pt-4 px-4">
+            <h5 class="mb-0">Latest System Activity</h5>
+          </div>
+          <div class="px-4 pb-4">
+            <div id="admin-ledger-feed" class="list-group list-group-flush"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="view-client" class="view">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+          <div>
+            <h2 class="fw-bold mb-1" id="client-welcome-name">Welcome</h2>
+            <div class="text-muted">Open any tile to view the full account window</div>
+          </div>
+          <div class="d-flex gap-2">
+            <button class="btn btn-outline-primary" id="open-transfer-modal"><i class="fa-solid fa-right-left me-2"></i>Transfer</button>
+            <button class="btn btn-primary" id="open-create-bill-modal-client"><i class="fa-solid fa-file-invoice-dollar me-2"></i>Add Bill</button>
+          </div>
+        </div>
+
+        <div class="row g-3 mb-4">
+          <div class="col-md-4">
+            <div class="card hfc-card p-4 tile" data-open-window="checking">
+              <div class="section-label">Checking</div>
+              <h2 class="mt-2 mb-2 text-success" id="dash-personal-bal">$0.00</h2>
+              <div class="text-muted">Deposits and outgoing transfers</div>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="card hfc-card p-4 tile" data-open-window="staging">
+              <div class="section-label">Bill Staging</div>
+              <h2 class="mt-2 mb-2 text-info" id="dash-staging-bal">$0.00</h2>
+              <div class="text-muted">Funds reserved for bills</div>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="card hfc-card p-4 tile" data-open-window="bills">
+              <div class="section-label">Total Due</div>
+              <h2 class="mt-2 mb-2 text-danger" id="client-total-due">$0.00</h2>
+              <div class="text-muted">Open invoices and payment status</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card hfc-card">
+          <div class="card-header bg-white border-0 pt-4 px-4">
+            <h5 class="mb-0">Recent Ledger Activity</h5>
+          </div>
+          <div class="px-4 pb-4">
+            <div id="client-ledger-feed" class="list-group list-group-flush"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div class="modal fade" id="clientModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Create Client</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3"><label class="form-label">Username</label><input id="new-client-username" class="form-control"></div>
+          <div class="mb-3"><label class="form-label">Full Name</label><input id="new-client-name" class="form-control"></div>
+          <div class="mb-3"><label class="form-label">PIN</label><input id="new-client-pin" class="form-control" maxlength="8"></div>
+          <div class="mb-0"><label class="form-label">Opening Deposit</label><input id="new-client-opening" class="form-control" value="0" type="number" step="0.01" min="0"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-primary" id="save-client-btn">Create</button>
+        </div>
+      </div>
     </div>
-</div>
+  </div>
 
-<div id="adminTxModal" class="modal" tabindex="-1" style="background: rgba(26, 31, 54, 0.8);">
-    <div class="modal-dialog modal-xl modal-dialog-centered">
-        <div class="modal-content border-0">
-            <div class="modal-header border-bottom border-3" style="background: #fff; border-color: var(--bs-warning) !important; border-radius: 16px 16px 0 0;">
-                <div>
-                    <h5 class="modal-title fw-bold mb-0 text-dark"><i class="fas fa-tasks me-2 text-warning"></i> TREASURY CONTROL CENTER</h5>
-                    <span class="text-muted small fw-bold text-uppercase" id="adminTxModalSubtitle">Managing Ledger For: User</span>
-                </div>
-                <button type="button" class="btn-close" onclick="closeAdminTxModal()"></button>
-            </div>
-            <div class="modal-body p-0 bg-light" style="border-radius: 0 0 16px 16px;">
-                <input type="hidden" id="adminTxActiveUser">
-                <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
-                    <table class="table table-hover mb-0 bg-white" style="font-size: 0.85rem;">
-                        <thead class="table-light" style="position: sticky; top: 0; z-index: 10;">
-                            <tr>
-                                <th>Status</th>
-                                <th>Date</th>
-                                <th>Ref #</th>
-                                <th>Description</th>
-                                <th class="text-end">Amount</th>
-                                <th class="text-center" style="width: 250px;">Treasury Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="adminTxBody">
-                            <tr><td colspan="6" class="text-center text-muted py-4">No transactions found.</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+  <div class="modal fade" id="billModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Record Bill</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
-    </div>
-</div>
-
-<div id="globalTransferModal" class="modal" tabindex="-1" style="background: rgba(26, 31, 54, 0.7);">
-    <div class="modal-dialog modal-dialog-centered modal-md">
-        <div class="modal-content border-0">
-            <div class="modal-header border-bottom border-3" style="background: #fff; border-color: var(--bs-success) !important; border-radius: 16px 16px 0 0;">
-                <div>
-                    <h5 class="modal-title fw-bold mb-0 text-success"><i class="fas fa-exchange-alt me-2"></i> GLOBAL TRANSFER HUB</h5>
-                    <span class="text-muted small fw-bold text-uppercase">Move funds internally or send to peers</span>
-                </div>
-                <button type="button" class="btn-close" onclick="closeGlobalTransferModal()"></button>
-            </div>
-            <div class="modal-body p-4 bg-light" style="border-radius: 0 0 16px 16px;">
-                <div class="mb-3">
-                    <label class="form-label small fw-bold text-muted mb-1">TRANSFER TYPE</label>
-                    <select id="transfer-type-selector" class="form-select font-monospace shadow-sm border-0" onchange="toggleTransferUI()">
-                        <option value="internal">Internal: Personal ➡ Responsibilities</option>
-                        <option value="external">Peer-to-Peer: Send to Another User</option>
-                    </select>
-                </div>
-                <div class="mb-3 d-none" id="transfer-external-ui">
-                    <label class="form-label small fw-bold text-muted mb-1">RECIPIENT</label>
-                    <select id="transfer-target-user" class="form-select shadow-sm border-0"></select>
-                </div>
-                <div class="mb-4">
-                    <label class="form-label small fw-bold text-muted mb-1">AMOUNT TO TRANSFER</label>
-                    <div class="input-group input-group-lg shadow-sm rounded-pill overflow-hidden border-0 bg-white">
-                        <span class="input-group-text bg-white border-0 fw-bold text-muted">$</span>
-                        <input type="number" id="transfer-amount-input" class="form-control border-0 fw-bold" placeholder="0.00">
-                    </div>
-                    <div class="text-end mt-1 px-2">
-                        <small class="text-muted fw-bold">Available Personal Checking: <span id="transfer-avail-bal" class="text-success">$0.00</span></small>
-                    </div>
-                </div>
-                <button class="btn btn-success w-100 py-3 fw-bold shadow" onclick="executeAdvancedTransfer()">AUTHORIZE TRANSFER</button>
-            </div>
+        <div class="modal-body">
+          <div class="mb-3"><label class="form-label">Client</label><select id="bill-user" class="form-select"></select></div>
+          <div class="mb-3"><label class="form-label">Bill Name</label><input id="bill-name" class="form-control"></div>
+          <div class="mb-3"><label class="form-label">Amount</label><input id="bill-amount" class="form-control" type="number" step="0.01" min="0.01"></div>
+          <div class="mb-0"><label class="form-label">Due Date</label><input id="bill-due-date" class="form-control" type="date"></div>
         </div>
-    </div>
-</div>
-
-<div id="adminUserModal" class="modal" tabindex="-1" style="background: rgba(26, 31, 54, 0.7);">
-    <div class="modal-dialog modal-dialog-centered modal-sm">
-        <div class="modal-content border-0">
-            <div class="modal-header border-bottom border-3" style="background: #fff; border-color: var(--bs-primary) !important; border-radius: 16px 16px 0 0;">
-                <h5 class="modal-title fw-bold mb-0 text-primary" id="adminUserModalTitle">Client Account</h5>
-                <button type="button" class="btn-close" onclick="closeAdminUserModal()"></button>
-            </div>
-            <div class="modal-body p-4 bg-light" style="border-radius: 0 0 16px 16px;">
-                <input type="hidden" id="admin-edit-original-username">
-                <div class="mb-2"><label class="form-label small fw-bold text-muted mb-1">USERNAME (Login ID)</label><input type="text" id="admin-user-username" class="form-control" placeholder="e.g. james"></div>
-                <div class="mb-2"><label class="form-label small fw-bold text-muted mb-1">FULL NAME</label><input type="text" id="admin-user-name" class="form-control" placeholder="e.g. James Brewer"></div>
-                <div class="mb-2"><label class="form-label small fw-bold text-muted mb-1">LOGIN PIN</label><input type="text" id="admin-user-pin" class="form-control font-monospace" placeholder="1111"></div>
-                <div class="mb-2"><label class="form-label small fw-bold text-muted mb-1">ACCOUNT NUMBER</label><input type="text" id="admin-user-acct" class="form-control font-monospace" placeholder="HFC-0010-XXXX"></div>
-                <div class="mb-3 row g-2">
-                    <div class="col-6"><label class="form-label small fw-bold text-muted mb-1">STATUS</label><select id="admin-user-status" class="form-select"><option value="active">Active</option><option value="frozen">Frozen</option></select></div>
-                    <div class="col-6"><label class="form-label small fw-bold text-muted mb-1">EMOJI</label><input type="text" id="admin-user-avatar" class="form-control text-center" placeholder="👨‍💼" maxlength="2"></div>
-                </div>
-                <button class="btn btn-primary w-100 py-2 fw-bold shadow-sm" onclick="saveAdminUser()">SAVE CLIENT</button>
-            </div>
+        <div class="modal-footer">
+          <button class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-primary" id="save-bill-btn">Save Bill</button>
         </div>
+      </div>
     </div>
-</div>
+  </div>
 
-<div id="billManagerModal" class="modal" tabindex="-1" style="background: rgba(26, 31, 54, 0.7);">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
-        <div class="modal-content border-0">
-            <div class="modal-header border-bottom border-3" style="background: #fff; border-color: var(--bs-primary) !important; border-radius: 16px 16px 0 0;">
-                <div>
-                    <h5 class="modal-title fw-bold mb-0 text-primary" id="bm-title"><i class="fas fa-file-invoice-dollar me-2"></i> BILL MANAGEMENT PANEL</h5>
-                    <span class="text-muted small fw-bold text-uppercase" id="bm-subtitle">Review & Pay Shared Liabilities</span>
-                </div>
-                <button type="button" class="btn-close" onclick="closeBillManager()"></button>
-            </div>
-            <div class="modal-body p-0 bg-light" style="border-radius: 0 0 16px 16px;">
-                <input type="hidden" id="bm-active-user">
-                <div class="p-4 border-bottom bg-white d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="text-muted fw-bold text-uppercase mb-1" style="font-size: 0.75rem;">Funds Available in Responsibilities Acct</h6>
-                        <h3 id="bm-staging-balance" class="text-primary font-monospace fw-bold mb-0">$0.00</h3>
-                    </div>
-                    <button class="btn btn-outline-primary btn-sm fw-bold rounded-pill px-3" onclick="closeBillManager(); openGlobalTransferModal();">Transfer More Funds</button>
-                </div>
-                <div class="p-4">
-                    <h6 class="fw-bold text-muted text-uppercase mb-3" style="font-size: 0.75rem;"><i class="fas fa-list-ul me-2"></i> Pending Liabilities to Pay</h6>
-                    <div class="card border-0 shadow-sm mb-0">
-                        <div class="card-body p-0 table-responsive" style="max-height: 300px; overflow-y: auto; border-radius: 12px;">
-                            <table class="table table-hover mb-0">
-                                <thead class="table-light" style="position: sticky; top: 0;">
-                                    <tr><th>Description</th><th>My Portion Due</th><th style="width: 140px;">Action</th></tr>
-                                </thead>
-                                <tbody id="bm-bills-body">
-                                    <tr><td colspan="3" class="text-center text-muted py-4">No pending bills.</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
+  <div class="modal fade" id="transferModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Transfer Funds</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
-    </div>
-</div>
-
-<div id="accountInfoModal" class="modal" tabindex="-1" style="background: rgba(26, 31, 54, 0.5);">
-    <div class="modal-dialog modal-dialog-centered modal-sm">
-        <div class="modal-content border-0">
-            <div class="modal-header text-white border-0" style="background-color: var(--bs-primary); border-radius: 16px 16px 0 0;">
-                <h6 class="modal-title fw-bold font-monospace mb-0"><i class="fas fa-id-card me-2"></i> ACCOUNT PROFILE</h6>
-                <button type="button" class="btn-close btn-close-white" onclick="document.getElementById('accountInfoModal').classList.remove('show'); setTimeout(()=>document.getElementById('accountInfoModal').style.display='none',300);"></button>
-            </div>
-            <div class="modal-body p-0">
-                <div class="bg-light text-center py-4 border-bottom">
-                    <div class="rounded-circle bg-white d-inline-flex justify-content-center align-items-center shadow-sm" style="width: 60px; height: 60px; font-size: 1.5rem; color: var(--bs-primary); border: 1px solid #E3E8EE;"><span id="acct-info-avatar">👤</span></div>
-                    <h5 class="mt-3 mb-0 fw-bold" id="acct-info-name">Name</h5>
-                    <span class="badge bg-success mt-2 rounded-pill px-3 py-1" id="acct-info-status">ACTIVE</span>
-                </div>
-                <div class="p-4">
-                    <div class="mb-3"><label class="text-muted small fw-bold mb-1">ACCOUNT NUMBER</label><div class="form-control bg-light font-monospace fw-bold text-dark border-0 shadow-sm" id="acct-info-number">HFC-0000</div></div>
-                    <div class="mb-3"><label class="text-muted small fw-bold mb-1">ROUTING (INTERNAL)</label><div class="form-control bg-light font-monospace text-muted border-0 shadow-sm">092000123</div></div>
-                </div>
-            </div>
+        <div class="modal-body">
+          <div class="mb-3"><label class="form-label">Direction</label>
+            <select id="transfer-direction" class="form-select">
+              <option value="personal_to_staging">Checking → Staging</option>
+              <option value="staging_to_personal">Staging → Checking</option>
+            </select>
+          </div>
+          <div class="mb-0"><label class="form-label">Amount</label><input id="transfer-amount" class="form-control" type="number" step="0.01" min="0.01"></div>
         </div>
-    </div>
-</div>
-
-<div id="masterBankTerminalModal" class="modal" tabindex="-1" style="background: rgba(26, 31, 54, 0.6);">
-    <div class="modal-dialog modal-xl modal-dialog-centered">
-        <div class="modal-content border-0">
-            <div class="modal-header border-bottom border-3" style="background: #fff; border-color: var(--bs-primary) !important; border-radius: 16px 16px 0 0;">
-                <div><h5 class="modal-title fw-bold mb-0" style="color: var(--bs-primary);"><i class="fas fa-university me-2"></i> CLEARINGHOUSE TERMINAL</h5><span class="text-muted small fw-bold text-uppercase">Global Transaction Ledger</span></div>
-                <button type="button" class="btn-close" onclick="document.getElementById('masterBankTerminalModal').classList.remove('show'); setTimeout(()=>document.getElementById('masterBankTerminalModal').style.display='none',300);"></button>
-            </div>
-            <div class="modal-body p-4 bg-light" style="border-radius: 0 0 16px 16px;">
-                <div class="row mb-4">
-                    <div class="col-md-6">
-                        <div class="card h-100 mb-0 border-0 shadow-sm">
-                            <div class="card-body"><h6 class="text-muted fw-bold text-uppercase" style="font-size: 0.75rem;">Total Ledger Balance</h6><h2 class="text-success fw-bold mb-0" id="terminal-master-balance">$0.00</h2></div>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="card h-100 mb-0 border-0 shadow-sm" style="background: linear-gradient(135deg, #1A1F36 0%, #2D3748 100%); color: white;">
-                            <div class="card-body">
-                                <h6 class="text-white-50 fw-bold text-uppercase" style="font-size: 0.75rem;">Manual Override</h6>
-                                <div class="input-group">
-                                    <span class="input-group-text bg-transparent border-0 text-white fw-bold">$</span>
-                                    <input type="number" id="terminal-override-input" class="form-control bg-light border-0 font-monospace rounded-pill me-2">
-                                    <button class="btn btn-primary px-4" onclick="updateBalanceFromTerminal()">APPLY</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+        <div class="modal-footer">
+          <button class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-primary" id="save-transfer-btn">Transfer</button>
         </div>
+      </div>
     </div>
-</div>
-
-<div id="addBillModal" class="modal" tabindex="-1" style="background: rgba(26, 31, 54, 0.5);">
-    <div class="modal-dialog modal-dialog-centered modal-sm">
-        <div class="modal-content border-0">
-            <div class="modal-header text-white border-0" style="background-color: var(--bs-primary); border-radius: 16px 16px 0 0;"><h6 class="modal-title fw-bold text-white mb-0"><i class="fas fa-file-invoice-dollar me-2"></i> Record Liability</h6><button type="button" class="btn-close btn-close-white" onclick="closeAddBillModal()"></button></div>
-            <div class="modal-body p-4 bg-light" style="border-radius: 0 0 16px 16px;">
-                <label class="form-label small fw-bold text-muted">CATEGORY</label>
-                <select id="modalBillSelect" class="form-select mb-3 shadow-sm border-0" onchange="checkCustomBill()"><option value="" disabled selected>Select category...</option><option value="Rent">Rent</option><option value="PNM (Electric)">PNM (Electric)</option><option value="New Mexico Gas">New Mexico Gas</option><option value="Xfinity">Xfinity</option><option value="Water">Water</option><option value="Internet">Internet</option><option value="custom">Other (Custom)...</option></select>
-                <input type="text" id="modalBillCustom" class="form-control mb-3 shadow-sm border-0 d-none" placeholder="Type custom name...">
-                <label class="form-label small fw-bold text-muted">GROSS AMOUNT</label>
-                <div class="input-group mb-4 shadow-sm border-0 bg-white rounded-pill overflow-hidden">
-                    <span class="input-group-text bg-white border-0 text-muted fw-bold">$</span><input type="number" id="modalBillAmount" class="form-control form-control-lg border-0 font-monospace text-dark fw-bold rounded-0" placeholder="0.00">
-                </div>
-                <button class="btn btn-primary w-100 py-3 shadow-sm" onclick="submitModalBill()">PROCESS SPLIT</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div id="statementModal" class="modal" tabindex="-1" style="background: rgba(26, 31, 54, 0.7);">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content border-0 rounded-0" id="printable-statement" style="background: #fff; color: #000; font-family: 'Times New Roman', Times, serif;">
-            <div class="d-flex justify-content-between align-items-center border-bottom border-dark pb-3 mb-4 mt-4 px-5">
-                <div><h3 class="fw-bold mb-0 text-dark" style="font-family: Arial, sans-serif;"><i class="fas fa-landmark me-2"></i> Home Financial</h3><small class="text-muted text-uppercase fw-bold" style="letter-spacing: 0.5px; font-family: Arial, sans-serif;">Master Internal Ledger</small></div>
-                <div class="text-end" style="font-size: 0.85rem; font-family: Arial, sans-serif;"><strong class="text-uppercase" style="letter-spacing: 0.5px;">Official Statement of Account</strong><br>Generated: <span id="stmt-gen-date"></span><br>Page 1 of 1</div>
-            </div>
-            <div class="row px-5 mb-4 font-monospace" style="font-size: 0.95rem;">
-                <div class="col-6"><p class="mb-0 text-uppercase fw-bold" id="stmt-name" style="font-size: 1.1rem;"></p><p class="mb-0">Albuquerque, NM</p><p class="mb-0">Primary Residence</p></div>
-                <div class="col-6 text-end"><table class="table table-sm table-bordered border-dark mb-0 float-end" style="width: 250px; font-family: Arial, sans-serif; font-size: 0.85rem;"><tr><td class="bg-light fw-bold">Account Number</td><td id="stmt-acct" class="font-monospace fw-bold"></td></tr><tr><td class="bg-light fw-bold">Statement Period</td><td id="stmt-period"></td></tr></table></div>
-            </div>
-            <div class="px-5 mb-4"><div class="row g-0 border border-dark text-center" style="font-family: Arial, sans-serif;"><div class="col-6 border-end border-dark bg-light p-3"><span class="d-block small text-muted fw-bold text-uppercase">Total Settled This Cycle</span><h3 class="mb-0 text-dark fw-bold" id="statement-current-total">$0.00</h3></div><div class="col-6 p-3"><span class="d-block small text-muted fw-bold text-uppercase">Vs. Previous Cycle</span><h4 class="mb-0 text-dark" id="statement-diff-total">$0.00</h4><span class="small fw-bold mt-1 d-block" id="statement-diff-text"></span></div></div></div>
-            <div class="px-5 mb-4"><h6 class="fw-bold text-uppercase border-bottom border-dark pb-2 mb-3" style="font-family: Arial, sans-serif;">Itemized Record</h6><table class="table table-sm border-dark text-dark" style="font-family: 'Times New Roman', serif;"><thead class="border-dark"><tr><th class="border-dark" style="color: #000;">Date</th><th class="border-dark" style="color: #000;">Reference ID</th><th class="border-dark" style="color: #000;">Description</th><th class="text-end border-dark" style="color: #000;">Amount</th></tr></thead><tbody id="statement-table-body" class="border-dark"></tbody></table></div>
-            <div class="px-5 pb-4 mt-5 text-center text-muted" style="font-family: Arial, sans-serif; font-size: 0.75rem;"><p class="mb-0 border-top pt-3">Member Home Financial Center. This is a system-generated document.<br>Please retain for your personal records.</p></div>
-            <div class="modal-footer bg-light no-print border-0 p-3 mt-2 d-flex justify-content-between" style="border-radius: 0;">
-                <button type="button" class="btn btn-outline-secondary px-4" onclick="document.getElementById('statementModal').classList.remove('show'); setTimeout(()=>document.getElementById('statementModal').style.display='none',300);">Close</button>
-                <div><button class="btn btn-outline-dark me-2 px-4" onclick="downloadStatementCSV()"><i class="fas fa-file-csv me-1"></i> Export CSV</button><button class="btn btn-primary px-4" onclick="window.print()"><i class="fas fa-print me-1"></i> Print / Save PDF</button></div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div id="rosterModal" class="modal" tabindex="-1" style="background: rgba(26, 31, 54, 0.5);">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
-        <div class="modal-content border-0">
-            <div class="modal-header bg-white border-bottom"><h5 class="modal-title fw-bold"><i class="fas fa-history text-muted me-2"></i> System Audit Log</h5><button type="button" class="btn-close" onclick="closeRoster()"></button></div>
-            <div class="modal-body p-0 bg-light" style="border-radius: 0 0 16px 16px;"><ul class="list-group list-group-flush" id="logArea" style="max-height: 400px; overflow-y: auto; border-radius: 0 0 16px 16px;"></ul></div>
-        </div>
-    </div>
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js"></script>
-
-<script>
-    // ==========================================
-    // PIXEL UI: MATERIAL RIPPLE EFFECT & TOASTS
-    // ==========================================
-    document.addEventListener('mousedown', function(e) {
-        const target = e.target.closest('.btn'); if (!target) return;
-        const circle = document.createElement('span'); const diameter = Math.max(target.clientWidth, target.clientHeight); const radius = diameter / 2;
-        circle.style.width = circle.style.height = `${diameter}px`; circle.style.left = `${e.clientX - target.getBoundingClientRect().left - radius}px`; circle.style.top = `${e.clientY - target.getBoundingClientRect().top - radius}px`;
-        circle.classList.add('ripple-effect');
-        const existingRipple = target.querySelector('.ripple-effect'); if (existingRipple) existingRipple.remove(); target.appendChild(circle);
-    });
-
-    function showToast(message, type = 'info') {
-        const container = document.getElementById('toast-container'); const toast = document.createElement('div');
-        let bgClass = type === 'admin' ? 'bg-danger text-white' : (type === 'success' ? 'bg-success text-white' : 'bg-dark text-white');
-        toast.className = `toast align-items-center border-0 mb-2 shadow-sm ${bgClass}`;
-        toast.setAttribute('role', 'alert'); toast.setAttribute('aria-live', 'assertive'); toast.setAttribute('aria-atomic', 'true');
-        toast.style.borderRadius = "12px";
-        toast.innerHTML = `<div class="d-flex"><div class="toast-body fw-bold" style="font-size:0.85rem;">${message}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" onclick="this.parentElement.parentElement.remove()"></button></div>`;
-        container.appendChild(toast); let bsToast = new bootstrap.Toast(toast, {delay: 4000}); bsToast.show();
-        toast.addEventListener('hidden.bs.toast', () => toast.remove());
-    }
-
-    function updateClock() {
-        const now = new Date(); document.getElementById('clockDate').innerText = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' });
-        document.getElementById('clockTime').innerText = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    } setInterval(updateClock, 1000); updateClock();
-
-    // ==========================================
-    // DYNAMIC USER SYSTEM & FIREBASE INIT
-    // ==========================================
-    const firebaseConfig = {
-        apiKey: "AIzaSyCp2GPQWhV_LY1SJKfPFgjpr1f1KqRqH9U", authDomain: "homefund-3b81a.firebaseapp.com",
-        databaseURL: "https://homefund-3b81a-default-rtdb.firebaseio.com", projectId: "homefund-3b81a",
-        storageBucket: "homefund-3b81a.firebasestorage.app", messagingSenderId: "597780469252", appId: "1:597780469252:web:95b8136a4db32111bc4751"
-    };
-    if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); }
-    const db = firebase.database();
-
-    let currentUser = null; let systemUsers = {}; let globalBalances = {}; let currentBills = {}; let currentLoans = {}; let userTransactions = {};
-
-    db.ref('.info/connected').on('value', snap => {
-        const s = document.getElementById('connectionStatus');
-        if(snap.val()) { s.innerHTML = '<span class="live-dot"></span>SECURE . ONLINE'; s.classList.remove('status-offline'); }
-        else { s.innerHTML = 'SYSTEM OFFLINE'; s.classList.add('status-offline'); }
-    });
-
-    db.ref('system/users').on('value', snap => {
-        if(snap.exists()) {
-            let incoming = snap.val();
-            // Legacy Data Auto-Repair Patch
-            for(let key in incoming) {
-                if(!incoming[key].role) { incoming[key].role = (key === 'admin') ? 'admin' : 'client'; }
-                if(!incoming[key].name) { incoming[key].name = key.charAt(0).toUpperCase() + key.slice(1); }
-            }
-            incoming.admin = { pin: '0000', status: 'active', role: 'admin', name: 'System Admin', avatar: '🛡️', acct: 'HFC-MASTER' };
-            systemUsers = incoming;
-        } else {
-            systemUsers = { admin: { pin: '0000', status: 'active', role: 'admin', name: 'System Admin', avatar: '🛡️', acct: 'HFC-MASTER' } };
-            db.ref('system/users').set(systemUsers);
-        }
-
-        if(currentUser) {
-            if(!systemUsers[currentUser] || systemUsers[currentUser].status !== 'active') { forceLogout('RESTRICTED'); }
-            else { document.getElementById('avatar-icon').innerHTML = systemUsers[currentUser].avatar; }
-        }
-        renderAdminUserTable(); populateDynamicUserDropdowns();
-    });
-
-    db.ref('balances').on('value', snap => {
-        globalBalances = snap.val() || {};
-        if (document.getElementById('acc_associated')) { document.getElementById('acc_associated').value = globalBalances.associated || 0.00; }
-        document.getElementById('terminal-master-balance').innerText = '$' + (globalBalances.associated || 0).toFixed(2);
-        calculateTotals();
-        renderAdminUserTable(); // Refresh admin balances
-
-        if(currentUser && currentUser !== 'admin') {
-            document.getElementById('dash-personal-bal').innerText = '$' + (globalBalances[currentUser + 'Personal'] || 0).toFixed(2);
-            document.getElementById('dash-staging-bal').innerText = '$' + (globalBalances[currentUser + 'Staging'] || 0).toFixed(2);
-            if(document.getElementById('globalTransferModal').classList.contains('show')) {
-                document.getElementById('transfer-avail-bal').innerText = '$' + (globalBalances[currentUser + 'Personal'] || 0).toFixed(2);
-            }
-        }
-        if(document.getElementById('billManagerModal').classList.contains('show')) { renderBillManagerUI(); }
-    });
-
-    db.ref('bills').on('value', snap => { currentBills = snap.val() || {}; renderSharedTables(); calculateTotals(); if(document.getElementById('billManagerModal').classList.contains('show')) renderBillManagerUI(); });
-    db.ref('loans').on('value', snap => { currentLoans = snap.val() || {}; renderLoanTables(); calculateTotals(); });
-
-    db.ref('transactions').on('value', snap => {
-        userTransactions = snap.val() || {};
-        if(currentUser && currentUser !== 'admin') { renderTransactions(currentUser); }
-        if(document.getElementById('adminTxModal').classList.contains('show')) {
-            let activeUser = document.getElementById('adminTxActiveUser').value;
-            if(activeUser) renderAdminTxTable(activeUser);
-        }
-    });
-
-    function recordTransaction(user, desc, amount, isCredit = false, status = 'posted', isTreasury = false) {
-        let refId = 'HFC-' + Math.floor(Math.random()*100000000);
-        db.ref(`transactions/${user}`).push({ desc: desc, amount: amount, isCredit: isCredit, refId: refId, timestamp: Date.now(), status: status, isTreasury: isTreasury });
-    }
-
-    // ==========================================
-    // AUTHENTICATION LOGIC
-    // ==========================================
-    function checkLoginEnter(e) { if(e.key === 'Enter') authenticateUser(); }
-
-    function authenticateUser() {
-        const rawUser = document.getElementById('login-user').value.trim(); const user = rawUser.toLowerCase(); const pin = document.getElementById('login-pin').value;
-        if(!user || !pin) { document.getElementById('login-err').innerText = "[ MISSING CREDENTIALS ]"; document.getElementById('login-err').classList.remove('d-none'); return; }
-
-        let validPin = false;
-        if(systemUsers[user]) {
-            if(systemUsers[user].status !== 'active') { document.getElementById('login-err').innerText = `[ ACCOUNT ${systemUsers[user].status.toUpperCase()} RESTRICTED ]`; document.getElementById('login-err').classList.remove('d-none'); return; }
-            if(pin === systemUsers[user].pin) { validPin = true; }
-        }
-
-        if (validPin) {
-            currentUser = user;
-            document.getElementById('login-err').classList.add('d-none'); document.getElementById('login-wrapper').style.display = 'none'; document.getElementById('app-wrapper').style.display = 'block';
-            document.getElementById('avatar-icon').innerHTML = systemUsers[user].avatar || '👤'; document.getElementById('dropdown-user-name').innerText = `Role: ${systemUsers[user].role.toUpperCase()}`;
-            document.getElementById('login-user').value = ''; document.getElementById('login-pin').value = ''; showToast(`Secure session established`, 'success');
-
-            if (systemUsers[user].role === 'admin') { switchTab('admin'); }
-            else { setupClientWorkspace(user); switchTab('client'); }
-            calculateTotals();
-
-            if(currentUser !== 'admin') {
-                document.getElementById('dash-personal-bal').innerText = '$' + (globalBalances[currentUser + 'Personal'] || 0).toFixed(2);
-                document.getElementById('dash-staging-bal').innerText = '$' + (globalBalances[currentUser + 'Staging'] || 0).toFixed(2);
-            }
-        } else { document.getElementById('login-err').innerText = "[ AUTHENTICATION FAILED ]"; document.getElementById('login-err').classList.remove('d-none'); }
-    }
-
-    function setupClientWorkspace(userId) {
-        const u = systemUsers[userId];
-        document.getElementById('client-welcome-name').innerText = `Welcome, ${u.name}`; document.getElementById('client-acct-btn-text').innerText = `ACCT: ${u.acct}`;
-        renderTransactions(userId);
-    }
-    function switchTab(tabName) { document.querySelectorAll('.view').forEach(el => el.classList.remove('active')); document.getElementById('view-' + tabName).classList.add('active'); }
-    function lockSession() {
-        if(!currentUser) return;
-        document.getElementById('global-lock-screen').style.display = 'flex'; document.getElementById('lock-screen-title').innerHTML = '<i class="fas fa-lock me-2"></i> WORKSPACE SECURED';
-        document.getElementById('lock-screen-sub').innerText = "Authentication required to resume session"; document.getElementById('btn-unlock').innerText = "RESUME SESSION";
-        document.getElementById('unlock-pin').style.display = "block"; document.getElementById('unlock-pin').focus();
-    }
-    function forceLogout(status) { document.getElementById('global-lock-screen').style.display = 'flex'; document.getElementById('lock-screen-title').innerText = `ACCOUNT ${status.toUpperCase()}`; document.getElementById('lock-screen-title').className = 'text-danger mb-2'; document.getElementById('lock-screen-sub').innerText = "The System Administrator has restricted your access."; document.getElementById('unlock-pin').style.display = "none"; document.getElementById('btn-unlock').innerText = "Return to Login"; currentUser = null; }
-    function unlockSession() {
-        if(!currentUser) { document.getElementById('global-lock-screen').style.display = 'none'; document.getElementById('app-wrapper').style.display = 'none'; document.getElementById('login-wrapper').style.display = 'flex'; document.getElementById('lock-screen-title').className = 'text-white mb-2'; return; }
-        if(document.getElementById('unlock-pin').value === systemUsers[currentUser].pin) { document.getElementById('global-lock-screen').style.display = 'none'; document.getElementById('unlock-pin').value = ''; document.getElementById('unlock-err').classList.add('d-none'); } else { document.getElementById('unlock-err').classList.remove('d-none'); }
-    }
-    function logoutUser() { currentUser = null; document.getElementById('app-wrapper').style.display = 'none'; document.getElementById('login-wrapper').style.display = 'flex'; }
-    function shutDownSystem() { document.getElementById('app-wrapper').style.display = 'none'; document.getElementById('login-wrapper').style.display = 'none'; document.getElementById('global-lock-screen').style.display = 'none'; document.getElementById('shutdown-screen').style.display = 'flex'; }
-
-
-    // ==========================================
-    // ADMIN: USER MANAGEMENT & TREASURY
-    // ==========================================
-    function renderAdminUserTable() {
-        let body = document.getElementById('adminUsersBody'); if(!body) return;
-        body.innerHTML = ''; let count = 0;
-        for(let key in systemUsers) {
-            if(key === 'admin') continue;
-            count++; let u = systemUsers[key];
-            let statusBadge = u.status === 'active' ? `<span class="badge bg-success">ACTIVE</span>` : `<span class="badge bg-danger">FROZEN</span>`;
-
-            // New Feature: Admin can see balances directly in table
-            let pBal = globalBalances[key + 'Personal'] || 0;
-            let sBal = globalBalances[key + 'Staging'] || 0;
-
-            body.innerHTML += `
-            <tr>
-                <td><strong class="text-dark">${u.name}</strong><br><small class="text-muted font-monospace">@${key}</small></td>
-                <td><strong class="text-success">$${pBal.toFixed(2)}</strong></td>
-                <td><strong class="text-info">$${sBal.toFixed(2)}</strong></td>
-                <td>${statusBadge}</td>
-                <td>
-                    <button class="btn btn-outline-warning btn-sm me-1 px-2 py-1 fw-bold text-dark" onclick="openAdminTxManager('${key}')" title="Manage Ledger"><i class="fas fa-list"></i> Manage Ledger</button>
-                    <button class="btn btn-outline-secondary btn-sm me-1 px-2 py-1" onclick="editAdminUser('${key}')" title="Edit Profile"><i class="fas fa-edit"></i></button>
-                    <button class="btn btn-outline-danger btn-sm px-2 py-1" onclick="deleteAdminUser('${key}')" title="Delete User"><i class="fas fa-trash"></i></button>
-                </td>
-            </tr>`;
-        }
-        if(count===0) body.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">No client accounts exist.</td></tr>';
-    }
-
-    function populateDynamicUserDropdowns() {
-        let clientCount = 0;
-        for(let k in systemUsers) { if(systemUsers[k].role === 'client' && systemUsers[k].status === 'active') clientCount++; }
-
-        let loanSelects = document.querySelectorAll('.dynamic-user-select');
-        loanSelects.forEach(select => {
-            let currentVal = select.value; select.innerHTML = '<option value="Home Fund">Master Home Fund</option>';
-            for(let key in systemUsers) { if(systemUsers[key].role === 'client' && systemUsers[key].status === 'active') { select.innerHTML += `<option value="${key}">${systemUsers[key].name}</option>`; } }
-            if(currentVal) select.value = currentVal;
-        });
-
-        let disburseTarget = document.getElementById('admin-disburse-target');
-        if(disburseTarget) {
-            let dVal = disburseTarget.value; disburseTarget.innerHTML = '<option value="" disabled selected>Select Target Client...</option>';
-            if(clientCount === 0) disburseTarget.innerHTML += '<option disabled>No active clients available</option>';
-            for(let key in systemUsers) { if(systemUsers[key].role === 'client' && systemUsers[key].status === 'active') { disburseTarget.innerHTML += `<option value="${key}">${systemUsers[key].name} (${systemUsers[key].acct})</option>`; } }
-            if(dVal) disburseTarget.value = dVal;
-        }
-
-        let externalTarget = document.getElementById('transfer-target-user');
-        if(externalTarget && currentUser) {
-            let eVal = externalTarget.value; externalTarget.innerHTML = '<option value="" disabled selected>Select Recipient...</option>';
-            for(let key in systemUsers) { if(systemUsers[key].role === 'client' && key !== currentUser && systemUsers[key].status === 'active') { externalTarget.innerHTML += `<option value="${key}">${systemUsers[key].name} (${systemUsers[key].acct})</option>`; } }
-            if(eVal) externalTarget.value = eVal;
-        }
-    }
-
-    function adminDisburseFunds() {
-        let target = document.getElementById('admin-disburse-target').value;
-        if(!target) { alert("Please select a specific client from the dropdown."); return; }
-
-        let amt = parseFloat(document.getElementById('admin-disburse-amount').value);
-        if(isNaN(amt) || amt <= 0) { alert("Invalid amount."); return; }
-
-        let executionType = document.getElementById('admin-disburse-type').value;
-
-        let centralBal = globalBalances.associated || 0;
-        if(executionType === 'posted' && amt > centralBal) { alert("Insufficient funds in the Associated Home Fund."); return; }
-
-        let txData = { desc: "Treasury Disbursement", amount: amt, isCredit: true, timestamp: Date.now(), refId: 'TRSY-' + Math.floor(Math.random()*100000000), status: executionType, isTreasury: true };
-        db.ref(`transactions/${target}`).push(txData);
-
-        if(executionType === 'posted') {
-            let targetBal = globalBalances[target + 'Personal'] || 0;
-            db.ref('balances/associated').set(centralBal - amt); db.ref(`balances/${target}Personal`).set(targetBal + amt);
-            db.ref('masterBankLedger').push({ user: "SYSTEM ADMIN", desc: `Treasury Disbursement to ${systemUsers[target].name}`, amount: -Math.abs(amt), timestamp: Date.now(), refId: txData.refId });
-            logActivity(`Disbursed $${amt.toFixed(2)} from Master Fund to ${target}`); showToast(`Successfully disbursed $${amt.toFixed(2)} to ${systemUsers[target].name}`, 'success');
-        } else {
-            logActivity(`Scheduled pending Treasury Disbursement of $${amt.toFixed(2)} to ${target}`); showToast(`Disbursement Scheduled (Pending) for ${systemUsers[target].name}`, 'success');
-        }
-        document.getElementById('admin-disburse-amount').value = '';
-    }
-
-    // ==========================================
-    // TREASURY CONTROL CENTER (LEDGER MGMT)
-    // ==========================================
-    function openAdminTxManager(username) {
-        document.getElementById('adminTxActiveUser').value = username; document.getElementById('adminTxModalSubtitle').innerText = `Managing Ledger For: ${systemUsers[username].name}`;
-        renderAdminTxTable(username); document.getElementById('adminTxModal').style.display = 'block'; setTimeout(() => document.getElementById('adminTxModal').classList.add('show'), 10);
-    }
-    function closeAdminTxModal() { document.getElementById('adminTxModal').classList.remove('show'); setTimeout(() => document.getElementById('adminTxModal').style.display = 'none', 300); }
-
-    function renderAdminTxTable(user) {
-        let body = document.getElementById('adminTxBody'); body.innerHTML = '';
-        let txns = userTransactions[user] || {}; let txKeys = Object.keys(txns);
-
-        if(txKeys.length === 0) { body.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No transactions found.</td></tr>'; return; }
-        let sortedTx = txKeys.map(k => ({ id: k, ...txns[k] })).sort((a,b) => b.timestamp - a.timestamp);
-
-        sortedTx.forEach(t => {
-            let d = new Date(t.timestamp).toLocaleString('en-US', {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
-            let status = t.status || 'posted';
-            let statusUI = ''; let rowClass = '';
-
-            if(status === 'pending') { statusUI = `<span class="dot-pending"></span><span class="fw-bold text-pending small">PENDING</span>`; rowClass = 'bg-pending-row'; }
-            else { statusUI = `<span class="badge bg-success rounded-pill px-2">POSTED</span>`; }
-
-            let amtColor = t.isCredit ? 'text-success' : 'text-danger'; let amtSign = t.isCredit ? '+' : '-';
-
-            let postBtn = status === 'pending' ? `<button class="btn btn-sm btn-success fw-bold px-2 py-1 me-1" onclick="postTx('${user}', '${t.id}', ${t.amount}, ${t.isCredit}, ${t.isTreasury || false})">POST</button>` : '';
-            let actionBtns = `${postBtn}<button class="btn btn-sm btn-outline-dark fw-bold px-2 py-1 me-1" onclick="moveTx('${user}', '${t.id}', ${t.amount}, ${t.isCredit}, '${status}', '${t.desc}')">MOVE</button><button class="btn btn-sm btn-outline-danger fw-bold px-2 py-1" onclick="deleteTx('${user}', '${t.id}', ${t.amount}, ${t.isCredit}, '${status}', ${t.isTreasury || false})" title="Permanently Erase & Refund"><i class="fas fa-trash"></i> Del</button>`;
-
-            body.innerHTML += `<tr class="${rowClass}"><td>${statusUI}</td><td class="text-muted small">${d}</td><td class="font-monospace text-primary small">${t.refId}</td><td class="fw-bold">${t.desc}</td><td class="fw-bold ${amtColor} text-end">${amtSign}$${t.amount.toFixed(2)}</td><td class="text-center">${actionBtns}</td></tr>`;
-        });
-    }
-
-    function postTx(userId, txId, amount, isCredit, isTreasury) {
-        if(!confirm("Post this pending transaction? This will instantly move the funds.")) return;
-        if(isTreasury) {
-            let centralBal = globalBalances.associated || 0;
-            if(amount > centralBal) { alert("Insufficient Master Home Fund balance to post this Treasury Disbursement."); return; }
-            db.ref('balances/associated').set(centralBal - amount);
-        }
-        let currentBal = globalBalances[userId + 'Personal'] || 0;
-        if(isCredit) currentBal += amount; else currentBal -= amount;
-        db.ref(`balances/${userId}Personal`).set(currentBal);
-        db.ref(`transactions/${userId}/${txId}/status`).set('posted'); db.ref(`transactions/${userId}/${txId}/timestamp`).set(Date.now());
-        showToast("Transaction successfully posted to ledger.", "success");
-    }
-
-    function deleteTx(userId, txId, amount, isCredit, status, isTreasury) {
-        if(!confirm("Are you sure you want to permanently delete this transaction? \n\nIf it is posted, this will reverse the balance impact on the account. (Note: If this was a P2P transfer, you may need to adjust the other user's ledger as well.)")) return;
-        if(status === 'posted') {
-            let currentBal = globalBalances[userId + 'Personal'] || 0;
-            if(isCredit) currentBal -= amount; else currentBal += amount;
-            db.ref(`balances/${userId}Personal`).set(currentBal);
-            if(isTreasury) { let centralBal = globalBalances.associated || 0; db.ref('balances/associated').set(centralBal + amount); }
-        }
-        db.ref(`transactions/${userId}/${txId}`).remove(); showToast("Transaction erased and balances refunded.", "admin");
-    }
-
-    function moveTx(originalUserId, txId, amount, isCredit, status, desc) {
-        let target = prompt("Enter the exact username to move this transaction to:");
-        if(!target || !systemUsers[target] || systemUsers[target].role !== 'client') { alert("Invalid or non-existent client username."); return; }
-        if(target === originalUserId) { alert("Transaction is already in this user's ledger."); return; }
-
-        if(status === 'posted') {
-            let origBal = globalBalances[originalUserId + 'Personal'] || 0;
-            if(isCredit) origBal -= amount; else origBal += amount;
-            db.ref(`balances/${originalUserId}Personal`).set(origBal);
-            let newBal = globalBalances[target + 'Personal'] || 0;
-            if(isCredit) newBal += amount; else newBal -= amount;
-            db.ref(`balances/${target}Personal`).set(newBal);
-        }
-        db.ref(`transactions/${originalUserId}/${txId}`).remove();
-        let newRefId = 'HFC-' + Math.floor(Math.random()*100000000);
-        db.ref(`transactions/${target}`).push({ desc: desc + ` (Re-routed from ${systemUsers[originalUserId].name})`, amount: amount, isCredit: isCredit, timestamp: Date.now(), refId: newRefId, status: status });
-        showToast(`Transaction successfully re-routed to ${systemUsers[target].name}`, "success");
-    }
-
-
-    // ==========================================
-    // GLOBAL TRANSFER ENGINE (P2P & INTERNAL)
-    // ==========================================
-    function openGlobalTransferModal() {
-        populateDynamicUserDropdowns(); document.getElementById('transfer-amount-input').value = ''; document.getElementById('transfer-type-selector').value = 'internal'; document.getElementById('transfer-avail-bal').innerText = '$' + (globalBalances[currentUser + 'Personal'] || 0).toFixed(2); toggleTransferUI(); document.getElementById('globalTransferModal').style.display = 'block'; setTimeout(() => document.getElementById('globalTransferModal').classList.add('show'), 10);
-    }
-    function closeGlobalTransferModal() { document.getElementById('globalTransferModal').classList.remove('show'); setTimeout(() => document.getElementById('globalTransferModal').style.display = 'none', 300); }
-    function toggleTransferUI() { let type = document.getElementById('transfer-type-selector').value; if(type === 'external') { document.getElementById('transfer-external-ui').classList.remove('d-none'); } else { document.getElementById('transfer-external-ui').classList.add('d-none'); } }
-
-    function executeAdvancedTransfer() {
-        let type = document.getElementById('transfer-type-selector').value; let amt = parseFloat(document.getElementById('transfer-amount-input').value); let personalBal = globalBalances[currentUser + 'Personal'] || 0;
-        if(isNaN(amt) || amt <= 0) { alert("Please enter a valid transfer amount."); return; }
-        if(amt > personalBal) { alert("Insufficient funds in Personal Checking."); return; }
-
-        if(type === 'internal') {
-            let stagingBal = globalBalances[currentUser + 'Staging'] || 0;
-            db.ref(`balances/${currentUser}Personal`).set(personalBal - amt); db.ref(`balances/${currentUser}Staging`).set(stagingBal + amt);
-            recordTransaction(currentUser, "Internal Transfer to Responsibilities", amt, false); showToast(`Moved $${amt.toFixed(2)} to Responsibilities Account`, 'success');
-        }
-        else if (type === 'external') {
-            let targetUser = document.getElementById('transfer-target-user').value;
-            if(!targetUser) { alert("Please select a recipient."); return; }
-
-            let targetBal = globalBalances[targetUser + 'Personal'] || 0;
-            db.ref(`balances/${currentUser}Personal`).set(personalBal - amt); db.ref(`balances/${targetUser}Personal`).set(targetBal + amt);
-            recordTransaction(currentUser, `P2P Transfer to ${systemUsers[targetUser].name}`, amt, false); recordTransaction(targetUser, `P2P Transfer from ${systemUsers[currentUser].name}`, amt, true);
-            logActivity(`${systemUsers[currentUser].name} sent $${amt.toFixed(2)} to ${systemUsers[targetUser].name}`); showToast(`Successfully sent $${amt.toFixed(2)} to ${systemUsers[targetUser].name}`, 'success');
-        }
-        closeGlobalTransferModal();
-    }
-
-    // ==========================================
-    // UI RENDERING, LOGS, AND REMAINDER CODE
-    // ==========================================
-    function renderTransactions(user) {
-        let body = document.getElementById(`client-txnBody`); if(!body) return; body.innerHTML = '';
-        let txns = Object.values(userTransactions[user] || {}).sort((a,b) => b.timestamp - a.timestamp); let count = 0;
-        txns.forEach(t => {
-            if(count >= 20) return; count++;
-            let d = new Date(t.timestamp).toLocaleDateString('en-US', {month:'short', day:'numeric'});
-            let status = t.status || 'posted';
-            let amtColor = ''; let amtSign = ''; let statusDot = '';
-            if(status === 'pending') { amtColor = 'text-pending'; amtSign = t.isCredit ? '+' : '-'; statusDot = `<span class="dot-pending" title="Pending"></span>`; }
-            else { amtColor = t.isCredit ? 'text-success' : 'text-danger'; amtSign = t.isCredit ? '+' : '-'; }
-            body.innerHTML += `<tr><td class="text-muted" style="width: 80px;">${statusDot}${d}</td><td class="font-monospace" style="color: var(--bs-primary); font-size:0.75rem;">${t.refId}</td><td class="fw-bold">${t.desc}</td><td class="fw-bold ${amtColor} text-end pe-3">${amtSign}$${t.amount.toFixed(2)}</td></tr>`;
-        });
-        if(count === 0) body.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">No transactions logged yet.</td></tr>';
-    }
-
-    function openAdminUserModal() { document.getElementById('adminUserModalTitle').innerText = "Create New Account"; document.getElementById('admin-edit-original-username').value = ''; document.getElementById('admin-user-username').value = ''; document.getElementById('admin-user-username').disabled = false; document.getElementById('admin-user-name').value = ''; document.getElementById('admin-user-pin').value = ''; document.getElementById('admin-user-acct').value = 'HFC-' + Math.floor(Math.random() * 9000 + 1000); document.getElementById('admin-user-status').value = 'active'; document.getElementById('admin-user-avatar').value = '👤'; document.getElementById('adminUserModal').style.display = 'block'; setTimeout(() => document.getElementById('adminUserModal').classList.add('show'), 10); }
-    function editAdminUser(username) { let u = systemUsers[username]; document.getElementById('adminUserModalTitle').innerText = "Modify Account"; document.getElementById('admin-edit-original-username').value = username; document.getElementById('admin-user-username').value = username; document.getElementById('admin-user-username').disabled = true; document.getElementById('admin-user-name').value = u.name; document.getElementById('admin-user-pin').value = u.pin; document.getElementById('admin-user-acct').value = u.acct; document.getElementById('admin-user-status').value = u.status; document.getElementById('admin-user-avatar').value = u.avatar; document.getElementById('adminUserModal').style.display = 'block'; setTimeout(() => document.getElementById('adminUserModal').classList.add('show'), 10); }
-    function closeAdminUserModal() { document.getElementById('adminUserModal').classList.remove('show'); setTimeout(() => document.getElementById('adminUserModal').style.display = 'none', 300); }
-    function saveAdminUser() {
-        let origUser = document.getElementById('admin-edit-original-username').value; let username = document.getElementById('admin-user-username').value.trim().toLowerCase(); let name = document.getElementById('admin-user-name').value.trim(); let pin = document.getElementById('admin-user-pin').value.trim(); let acct = document.getElementById('admin-user-acct').value.trim(); let status = document.getElementById('admin-user-status').value; let avatar = document.getElementById('admin-user-avatar').value.trim() || '👤';
-        if(!username || !name || pin.length < 4) { alert("Please fill out all fields. PIN must be at least 4 digits."); return; }
-        if(!origUser && systemUsers[username]) { alert("Username already exists!"); return; }
-        let userData = { name, pin, acct, status, avatar, role: 'client' }; db.ref(`system/users/${username}`).set(userData);
-        if(!origUser) { db.ref(`balances/${username}Personal`).set(0); db.ref(`balances/${username}Staging`).set(0); }
-        closeAdminUserModal(); logActivity(`Account updated: ${username}`); showToast('Client account saved successfully.', 'success');
-    }
-    function deleteAdminUser(username) { if(confirm(`WARNING: Are you sure you want to permanently delete the account for ${username}?`)) { db.ref(`system/users/${username}`).remove(); logActivity(`Deleted account: ${username}`); showToast('Account permanently removed.', 'admin'); } }
-
-    function updateBalanceFromTerminal() { let val = document.getElementById('terminal-override-input').value; db.ref('balances/associated').set(parseFloat(val) || 0); logActivity(`Updated Associated Home Fund`); showToast('Ledger balance updated', 'success'); }
-    function openAddBillModal() { document.getElementById('modalBillSelect').value = ''; document.getElementById('modalBillCustom').value = ''; document.getElementById('modalBillAmount').value = ''; document.getElementById('modalBillCustom').classList.add('d-none'); document.getElementById('addBillModal').style.display = 'block'; setTimeout(() => document.getElementById('addBillModal').classList.add('show'), 10); }
-    function closeAddBillModal() { document.getElementById('addBillModal').classList.remove('show'); setTimeout(() => document.getElementById('addBillModal').style.display = 'none', 300); }
-    function checkCustomBill() { if(document.getElementById('modalBillSelect').value === 'custom') { document.getElementById('modalBillCustom').classList.remove('d-none'); document.getElementById('modalBillCustom').focus(); } else { document.getElementById('modalBillCustom').classList.add('d-none'); } }
-
-    function submitModalBill() {
-        let selectVal = document.getElementById('modalBillSelect').value; let customVal = document.getElementById('modalBillCustom').value.trim(); let amount = parseFloat(document.getElementById('modalBillAmount').value);
-        let name = selectVal === 'custom' ? customVal : selectVal;
-        if(!name) { alert("Please select or enter a bill name."); return; } if(isNaN(amount) || amount <= 0) { alert("Please enter a valid amount."); return; }
-
-        let newBill = { name: name, amount: amount };
-        for(let key in systemUsers) { if(systemUsers[key].role === 'client' && systemUsers[key].status === 'active') { newBill[key + 'Paid'] = false; } }
-
-        db.ref('bills/bill_' + Date.now()).set(newBill);
-        closeAddBillModal(); logActivity(`Recorded liability: ${name} ($${amount.toFixed(2)})`); showToast('Liability processed and split equally', 'success');
-    }
-
-    function openAccountInfo(user) {
-        let u = systemUsers[user]; let liability = document.getElementById('client-total-due') ? document.getElementById('client-total-due').innerText.split(' ')[0] : '$0.00';
-        document.getElementById('acct-info-name').innerText = u.name; document.getElementById('acct-info-number').innerText = u.acct; document.getElementById('acct-info-avatar').innerText = u.avatar;
-        document.getElementById('acct-info-liability').innerText = liability; document.getElementById('acct-info-status').innerText = u.status.toUpperCase();
-        document.getElementById('accountInfoModal').style.display = 'block'; setTimeout(() => document.getElementById('accountInfoModal').classList.add('show'), 10);
-    }
-    function openMasterBankTerminal() { document.getElementById('terminal-override-input').value = globalBalances.associated || 0; document.getElementById('masterBankTerminalModal').style.display = 'block'; setTimeout(() => document.getElementById('masterBankTerminalModal').classList.add('show'), 10); }
-
-    function generateStatement(user) {
-        let monthVal = document.getElementById(`client-statementMonth`).value; if(!monthVal) { alert("Please select a month and year first."); return; }
-        let [year, month] = monthVal.split('-'); let selectedStr = `${year}-${month}`; let prevDate = new Date(year, parseInt(month)-2, 1); let prevStr = `${prevDate.getFullYear()}-${String(prevDate.getMonth()+1).padStart(2, '0')}`;
-        let currentTotal = 0; let prevTotal = 0; let currentList = []; let txns = userTransactions[user] || {};
-        for(let key in txns) {
-            let t = txns[key]; let tDate = new Date(t.timestamp); let tMonthStr = `${tDate.getFullYear()}-${String(tDate.getMonth()+1).padStart(2, '0')}`;
-            if(!t.isCredit && (!t.status || t.status === 'posted')) { if(tMonthStr === selectedStr) { currentTotal += t.amount; currentList.push(t); } else if(tMonthStr === prevStr) { prevTotal += t.amount; } }
-        }
-        document.getElementById('stmt-name').innerText = systemUsers[user].name.toUpperCase(); document.getElementById('stmt-acct').innerText = systemUsers[user].acct;
-        let displayMonth = new Date(year, parseInt(month)-1, 1).toLocaleString('default', { month: 'long', year: 'numeric' }); document.getElementById('stmt-period').innerText = displayMonth;
-        document.getElementById('stmt-gen-date').innerText = new Date().toLocaleDateString('en-US') + " " + new Date().toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit'});
-        document.getElementById('statement-current-total').innerText = `$${currentTotal.toFixed(2)}`; let diff = currentTotal - prevTotal; document.getElementById('statement-diff-total').innerText = `$${prevTotal.toFixed(2)}`;
-        let diffTextEl = document.getElementById('statement-diff-text');
-        if(prevTotal === 0) { diffTextEl.innerHTML = `<span class="text-muted">No prior data available</span>`; } else if(diff > 0) { diffTextEl.innerHTML = `<span class="text-danger"><i class="fas fa-arrow-up"></i> $${Math.abs(diff).toFixed(2)} vs prior</span>`; } else if (diff < 0) { diffTextEl.innerHTML = `<span class="text-success"><i class="fas fa-arrow-down"></i> $${Math.abs(diff).toFixed(2)} vs prior</span>`; } else { diffTextEl.innerHTML = `<span class="text-muted">Equal to prior cycle</span>`; }
-        let tbody = document.getElementById('statement-table-body'); tbody.innerHTML = '';
-        currentList.sort((a,b) => a.timestamp - b.timestamp).forEach(t => { let d = new Date(t.timestamp).toLocaleDateString('en-US'); tbody.innerHTML += `<tr><td class="border-dark">${d}</td><td class="border-dark font-monospace" style="color:#000; font-size:0.8rem;">${t.refId}</td><td class="border-dark">${t.desc}</td><td class="text-end fw-bold border-dark">$${t.amount.toFixed(2)}</td></tr>`; });
-        if(currentList.length === 0) tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3 border-dark">No account activity for this period.</td></tr>';
-        document.getElementById('statementModal').style.display = 'block'; setTimeout(() => document.getElementById('statementModal').classList.add('show'), 10);
-    }
-
-    db.ref('chat').limitToLast(20).on('value', snap => {
-        let html = ''; snap.forEach(child => {
-            let msg = child.val(); let badgeClass = msg.user === 'System Admin' ? 'bg-danger' : 'bg-primary';
-            html += `<div class="chat-msg"><span class="badge ${badgeClass} me-2 text-white">${msg.user}</span> ${msg.text} <span class="text-muted float-end" style="font-size:10px;">${msg.time}</span></div>`;
-        });
-        if(html === '') html = '<div class="text-muted text-center py-3">No internal communications.</div>';
-        let cBox = document.getElementById('client-chat-box'); if(cBox) { cBox.innerHTML = html; cBox.scrollTop = cBox.scrollHeight; }
-    });
-    function sendChat() {
-        let input = document.getElementById(`client-chat-input`); let text = input.value.trim();
-        if(text) { db.ref('chat').push({ user: systemUsers[currentUser].name, text: text, time: new Date().toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit'}) }); input.value = ''; }
-    }
-
-    db.ref('logs').limitToLast(50).on('value', snap => {
-        const logArea = document.getElementById('logArea'); logArea.innerHTML = ''; const logs = [];
-        snap.forEach(child => { logs.unshift({ id: child.key, data: child.val() }); });
-        logs.forEach(log => {
-            let delBtn = (currentUser === 'admin') ? `<button class="btn btn-outline-danger btn-sm ms-3" onclick="if(confirm('Delete log?')) db.ref('logs/${log.id}').remove()"><i class="fas fa-trash"></i></button>` : '';
-            logArea.innerHTML += `<li class="list-group-item d-flex justify-content-between align-items-center"><div><strong class="text-dark me-2">${log.data.user}</strong> ${log.data.action}<br><small class="text-muted">${log.data.time}</small></div>${delBtn}</li>`;
-        });
-        if(logs.length === 0) logArea.innerHTML = '<li class="list-group-item text-center text-muted py-3">No system history recorded.</li>';
-    });
-
-    function logActivity(actionText) {
-        // Protective chaining ensures the log NEVER crashes, even if the user is somehow missing
-        const activeName = (currentUser && systemUsers[currentUser]) ? systemUsers[currentUser].name : "SYSTEM";
-        db.ref('logs').push({ user: activeName, action: actionText, time: new Date().toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit'}) });
-    }
-
-    function deleteBill(billId, billName) { if(confirm("Remove this liability from the ledger?")) { db.ref('bills/' + billId).remove(); logActivity(`Removed record: ${billName}`); showToast('Record expunged', 'admin'); } }
-
-    function issueLoan() {
-        const borrower = document.getElementById(`client-borrower`).value, lender = document.getElementById(`client-lender`).value, reason = document.getElementById(`client-reason`).value.trim(), amount = parseFloat(document.getElementById(`client-amt`).value);
-        if(borrower === lender) { alert("Borrower and Lender cannot be identical."); return; }
-        if(reason && !isNaN(amount) && amount > 0) {
-            db.ref('loans/loan_' + Date.now()).set({ borrower, lender, reason, amount }); document.getElementById(`client-reason`).value = ''; document.getElementById(`client-amt`).value = ''; logActivity(`Issued $${amount.toFixed(2)} credit`); showToast('Credit line generated', 'success');
-        } else { alert("Please provide valid inputs."); }
-    }
-
-    function editLoan(loanId, currentReason, currentAmount) { document.getElementById('edit-loan-id').value = loanId; document.getElementById('edit-loan-reason').value = currentReason; document.getElementById('edit-loan-amount').value = currentAmount; document.getElementById('editLoanModal').style.display = 'block'; setTimeout(()=> document.getElementById('editLoanModal').classList.add('show'), 10); }
-    function saveEditedLoan() { const loanId = document.getElementById('edit-loan-id').value, newReason = document.getElementById('edit-loan-reason').value.trim(), newAmount = parseFloat(document.getElementById('edit-loan-amount').value); if(!newReason || isNaN(newAmount) || newAmount <= 0) { alert("Invalid entries."); return; } db.ref('loans/' + loanId).update({ reason: newReason, amount: newAmount }); document.getElementById('editLoanModal').classList.remove('show'); setTimeout(()=> document.getElementById('editLoanModal').style.display = 'none', 300); logActivity(`Modified credit record [${newReason}: $${newAmount.toFixed(2)}]`); showToast('Record updated', 'success'); }
-
-    function makeLoanPayment(loanId, borrowerKey, currentAmount) {
-        // Safe fallback name
-        let bName = systemUsers[borrowerKey] ? systemUsers[borrowerKey].name : borrowerKey;
-        let payStr = prompt(`Process payment for ${bName}.\nRemaining Balance: $${currentAmount.toFixed(2)}`);
-        if(!payStr) return; let payAmt = parseFloat(payStr); if(isNaN(payAmt) || payAmt <= 0) { alert("Invalid amount."); return; } if(payAmt > currentAmount) { alert("Payment cannot exceed remaining balance."); return; }
-
-        recordTransaction(borrowerKey, `Credit payment applied`, payAmt); let newAmt = currentAmount - payAmt;
-        if(newAmt === 0) { db.ref('loans/' + loanId).remove(); logActivity(`${bName} submitted $${payAmt.toFixed(2)} to resolve credit line.`); showToast('Credit line settled', 'success'); }
-        else { db.ref('loans/' + loanId + '/amount').set(newAmt); logActivity(`${bName} processed a partial payment of $${payAmt.toFixed(2)}.`); showToast(`Payment processed`, 'success'); }
-    }
-
-    function calculateTotals() {
-        const totalCash = globalBalances.associated || 0; let totalBills = 0; let clientOwes = {};
-
-        for(let k in systemUsers) { if(systemUsers[k].role === 'client') clientOwes[k] = 0; }
-        let activeClients = Object.values(systemUsers).filter(u => u.role === 'client' && u.status === 'active').length; if(activeClients === 0) activeClients = 1;
-
-        for (let id in currentBills) {
-            let b = currentBills[id]; let splitAmt = b.amount / activeClients;
-            for(let k in clientOwes) { if(!b[k + 'Paid'] && systemUsers[k].status === 'active') { clientOwes[k] += splitAmt; totalBills += splitAmt; } }
-        }
-
-        for (let id in currentLoans) {
-            let l = currentLoans[id];
-            // Lowercase mapping for legacy loan data
-            let bKey = (l.borrower || "").toLowerCase();
-            let lKey = (l.lender || "").toLowerCase();
-            if(clientOwes[bKey] !== undefined) clientOwes[bKey] += l.amount;
-            if(clientOwes[lKey] !== undefined) clientOwes[lKey] -= l.amount;
-        }
-
-        const surplus = totalCash - totalBills;
-        document.querySelectorAll('.val-total-cash').forEach(el => el.innerText = '$' + totalCash.toFixed(2));
-        document.querySelectorAll('.val-total-bills').forEach(el => el.innerText = '$' + totalBills.toFixed(2));
-        document.querySelectorAll('.val-surplus').forEach(el => { el.innerText = '$' + surplus.toFixed(2); if(surplus < 0) { el.classList.remove('text-primary'); el.classList.add('text-danger'); } else { el.classList.remove('text-danger'); el.classList.add('text-primary'); } });
-
-        if(currentUser && currentUser !== 'admin') {
-            let el = document.getElementById('client-total-due');
-            if(el) el.innerHTML = '$' + Math.max(0, clientOwes[currentUser] || 0).toFixed(2) + ' <span class="fs-6 text-muted fw-normal">Total Due</span>';
-        }
-    }
-
-    function renderLoanTables() {
-        const master = document.getElementById('masterLoansBody'); const clientTable = document.getElementById('client-loansBody');
-        if(master) master.innerHTML = ''; if(clientTable) clientTable.innerHTML = ''; let mCount = 0, cCount = 0;
-
-        for(let id in currentLoans) {
-            let l = currentLoans[id]; mCount++;
-
-            // Lowercase logic to protect against old "James" vs "james" database entries
-            let bKey = (l.borrower || "").toLowerCase();
-            let lKey = (l.lender || "").toLowerCase();
-
-            let bName = systemUsers[bKey] ? systemUsers[bKey].name : l.borrower;
-            let lName = systemUsers[lKey] ? systemUsers[lKey].name : l.lender;
-
-            let btnHTML = `<button class="btn btn-outline-secondary btn-sm me-1 px-2 py-1" style="font-size:0.7rem;" onclick="editLoan('${id}', '${l.reason}', ${l.amount})"><i class="fas fa-edit"></i></button> <button class="btn btn-outline-danger btn-sm me-1 px-2 py-1" style="font-size:0.7rem;" onclick="if(confirm('Expunge record?')) db.ref('loans/${id}').remove()"><i class="fas fa-trash"></i></button>`;
-            if(master) master.innerHTML += `<tr><td class="text-danger fw-bold">${bName}</td><td class="text-success fw-bold">${lName}</td><td class="fw-bold">$${l.amount.toFixed(2)}</td><td>${btnHTML}</td></tr>`;
-
-            if(clientTable && currentUser && (bKey === currentUser || lKey === currentUser)) {
-                cCount++;
-                let isBorrower = bKey === currentUser;
-                let status = isBorrower ? `<span class="text-danger fw-bold">Due to ${lName}</span>` : `<span class="text-success fw-bold">Due from ${bName}</span>`;
-                let actionBtn = isBorrower ? `<button class="btn btn-primary btn-sm px-2 py-1 text-white fw-bold" style="font-size:0.7rem;" onclick="makeLoanPayment('${id}', '${bKey}', ${l.amount})">PROCESS</button>` : `<span class="badge bg-light text-dark border rounded-pill">LENDER</span>`;
-                clientTable.innerHTML += `<tr><td>${status}</td><td>${l.reason}</td><td class="fw-bold">$${l.amount.toFixed(2)}</td><td>${actionBtn}</td></tr>`;
-            }
-        }
-        if(mCount === 0 && master) master.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4">No active internal credit lines.</td></tr>';
-        if(cCount === 0 && clientTable) clientTable.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">No active records.</td></tr>';
-    }
-
-</script>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="script.js"></script>
 </body>
 </html>
