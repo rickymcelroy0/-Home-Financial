@@ -26,6 +26,7 @@ const money = (n) => new Intl.NumberFormat('en-US', { style: 'currency', currenc
 const number = (n) => Number(Number(n || 0).toFixed(2));
 const nowIso = () => new Date().toISOString();
 const sortNewest = (arr) => [...arr].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
 const openBillsForUser = (uid) => Object.entries(bills).filter(([_, b]) => b.userId === uid && b.status === 'open');
 const paidBillsForUser = (uid) => Object.entries(bills).filter(([_, b]) => b.userId === uid && b.status === 'paid');
 const getPrivateBillMap = (uid) => privateBills[uid] || {};
@@ -50,6 +51,7 @@ function showLoginError(msg) {
   err.textContent = msg;
   err.classList.remove('d-none');
 }
+
 function clearLoginError() { $('login-err').classList.add('d-none'); }
 function isAdmin() { return currentUser && users[currentUser]?.role === 'admin'; }
 
@@ -95,9 +97,12 @@ function authenticateUser() {
   currentUser = rawUser;
   setSession(rawUser);
   clearLoginError();
+
+  // FIXED: Using Bootstrap class logic for completely bulletproof toggling
   $('login-pin').value = '';
-  $('login-wrapper').style.display = 'none';
-  $('app-wrapper').style.display = 'block';
+  $('login-wrapper').classList.add('d-none');
+  $('app-wrapper').classList.remove('d-none');
+
   renderAll();
   startClock();
   showToast(`Session established for <strong>${rawUser}</strong>.`, 'success');
@@ -106,8 +111,11 @@ function authenticateUser() {
 function logoutUser() {
   currentUser = null;
   clearSession();
-  $('app-wrapper').style.display = 'none';
-  $('login-wrapper').style.display = 'flex';
+
+  // FIXED: Restoring d-none / d-flex classes securely on logout
+  $('app-wrapper').classList.add('d-none');
+  $('login-wrapper').classList.remove('d-none');
+
   $('login-user').value = '';
   $('login-pin').value = '';
 }
@@ -134,28 +142,28 @@ function sharedBillRowHTML([billId, bill], includePay = false) {
   const user = users[bill.userId] || {};
   const canPay = includePay && bill.status === 'open';
   return `<div class="list-row">
-    <div>
-      <div class="fw-semibold">${bill.name}</div>
-      <div class="small muted">${user.name || bill.userId} · due ${bill.dueDate || '—'} · ${bill.status}</div>
-    </div>
-    <div class="text-end">
-      <div class="fw-semibold">${money(bill.amount)}</div>
-      ${canPay ? `<button class="btn btn-sm btn-primary mt-2" onclick="payBill('${billId}')">Pay From Bill Vault</button>` : ''}
-    </div>
+  <div>
+  <div class="fw-semibold">${bill.name}</div>
+  <div class="small muted">${user.name || bill.userId} · due ${bill.dueDate || '—'} · ${bill.status}</div>
+  </div>
+  <div class="text-end">
+  <div class="fw-semibold">${money(bill.amount)}</div>
+  ${canPay ? `<button class="btn btn-sm btn-primary mt-2" onclick="payBill('${billId}')">Pay From Bill Vault</button>` : ''}
+  </div>
   </div>`;
 }
 
 function privateBillRowHTML([billId, bill], includePay = false) {
   const canPay = includePay && bill.status === 'open';
   return `<div class="list-row">
-    <div>
-      <div class="fw-semibold">${bill.name}</div>
-      <div class="small muted">${bill.category || 'Personal'} · due ${bill.dueDate || '—'} · ${bill.status}</div>
-    </div>
-    <div class="text-end">
-      <div class="fw-semibold">${money(bill.amount)}</div>
-      ${canPay ? `<button class="btn btn-sm btn-success mt-2" onclick="payPrivateBill('${billId}')">Pay From Bill Vault</button>` : ''}
-    </div>
+  <div>
+  <div class="fw-semibold">${bill.name}</div>
+  <div class="small muted">${bill.category || 'Personal'} · due ${bill.dueDate || '—'} · ${bill.status}</div>
+  </div>
+  <div class="text-end">
+  <div class="fw-semibold">${money(bill.amount)}</div>
+  ${canPay ? `<button class="btn btn-sm btn-success mt-2" onclick="payPrivateBill('${billId}')">Pay From Bill Vault</button>` : ''}
+  </div>
   </div>`;
 }
 
@@ -168,7 +176,10 @@ function populateUserSelects() {
 function coverageText(userId) {
   const userBals = balances[userId] || { staging: 0 };
   const sharedDue = openBillsForUser(userId).reduce((s, [_, b]) => s + number(b.amount), 0);
-  return money(number(userBals.staging) - sharedDue);
+  const privateDue = openPrivateBillsForUser(userId).reduce((s, [_, b]) => s + number(b.amount), 0);
+
+  // FIXED: Math now subtracts BOTH shared and private bills from the vault total
+  return money(number(userBals.staging) - (sharedDue + privateDue));
 }
 
 function renderAdmin() {
@@ -185,25 +196,28 @@ function renderAdmin() {
   $('adminUsersBody').innerHTML = activeClientEntries().map(([uid, u]) => {
     const b = balances[uid] || { personal: 0, staging: 0 };
     return `<tr>
-      <td><div class="fw-semibold">${u.name}</div><div class="small muted mono">${uid} · ${u.accountNumber || 'pending'}</div></td>
-      <td>${money(b.personal)}</td>
-      <td>${money(b.staging)}</td>
-      <td><span class="pill ${u.status === 'active' ? 'status-active' : 'status-closed'}">${u.status}</span></td>
-      <td>
-        <div class="d-flex flex-wrap gap-2">
-          <button class="btn btn-sm btn-outline-primary" onclick="openAccountWindow('client_overview','${uid}')">Open</button>
-          <button class="btn btn-sm btn-outline-secondary" onclick="toggleUserStatus('${uid}')">${u.status === 'active' ? 'Close' : 'Open'}</button>
-          <button class="btn btn-sm btn-outline-danger" onclick="deleteUser('${uid}')">Delete</button>
-        </div>
-      </td>
+    <td><div class="fw-semibold">${u.name}</div><div class="small muted mono">${uid} · ${u.accountNumber || 'pending'}</div></td>
+    <td>${money(b.personal)}</td>
+    <td>${money(b.staging)}</td>
+    <td><span class="pill ${u.status === 'active' ? 'status-active' : 'status-closed'}">${u.status}</span></td>
+    <td>
+    <div class="d-flex flex-wrap gap-2">
+    <button class="btn btn-sm btn-outline-primary" onclick="openAccountWindow('client_overview','${uid}')">Open</button>
+    <button class="btn btn-sm btn-outline-secondary" onclick="toggleUserStatus('${uid}')">${u.status === 'active' ? 'Close' : 'Open'}</button>
+    <button class="btn btn-sm btn-outline-danger" onclick="deleteUser('${uid}')">Delete</button>
+    </div>
+    </td>
     </tr>`;
   }).join('') || `<tr><td colspan="5" class="muted">No client accounts yet.</td></tr>`;
 
-  $('admin-ledger-feed').innerHTML = sortNewest(Object.values(ledger)).slice(0, 10).map(ledgerRowHTML).join('') || `<div class="muted">No activity yet.</div>`;
+  // FIXED: Added filter to hide 'private_bill_created' and 'private_bill_paid' from the admin's global ledger!
+  const publicLedger = Object.values(ledger).filter(x => x.type !== 'private_bill_created' && x.type !== 'private_bill_paid');
+  $('admin-ledger-feed').innerHTML = sortNewest(publicLedger).slice(0, 10).map(ledgerRowHTML).join('') || `<div class="muted">No activity yet.</div>`;
+
   $('bill-control-feed').innerHTML = sortNewest(Object.entries(bills).filter(([_, b]) => b.status === 'open').map(([id, b]) => ({ id, ...b })))
-    .slice(0, 8)
-    .map((b) => sharedBillRowHTML([b.id, b], true))
-    .join('') || `<div class="muted">No shared bills.</div>`;
+  .slice(0, 8)
+  .map((b) => sharedBillRowHTML([b.id, b], true))
+  .join('') || `<div class="muted">No shared bills.</div>`;
 }
 
 function renderClient() {
@@ -228,10 +242,10 @@ function renderClient() {
   $('private-bill-feed').innerHTML = privateOpen.map((entry) => privateBillRowHTML(entry, true)).join('') || `<div class="muted">No private bills yet.</div>`;
 
   $('money-guide').innerHTML = `
-    <div class="mb-2"><strong>Suggested bill vault target:</strong> ${money(recommended)}</div>
-    <div class="mb-2"><strong>Shared bills:</strong> ${money(sharedDue)}</div>
-    <div class="mb-2"><strong>Private bills:</strong> ${money(privateDue)}</div>
-    <div><strong>${shortage > 0 ? 'You still need to move' : 'You are ahead by'}</strong> ${money(Math.abs(shortage))} ${shortage > 0 ? 'into your bill vault.' : 'in your bill vault.'}</div>`;
+  <div class="mb-2"><strong>Suggested bill vault target:</strong> ${money(recommended)}</div>
+  <div class="mb-2"><strong>Shared bills:</strong> ${money(sharedDue)}</div>
+  <div class="mb-2"><strong>Private bills:</strong> ${money(privateDue)}</div>
+  <div><strong>${shortage > 0 ? 'You still need to move' : 'You are ahead by'}</strong> ${money(Math.abs(shortage))} ${shortage > 0 ? 'into your bill vault.' : 'in your bill vault.'}</div>`;
 }
 
 function renderAll() {
@@ -259,12 +273,11 @@ async function createClient() {
   const opening = number($('new-client-opening').value);
   if (!username || !name || !pin) return showToast('Complete every client field.', 'warning');
   if (users[username]) return showToast('That username already exists.', 'danger');
-
   const accountNumber = generateAccountNumber();
   await db.ref().update({
     [`users/${username}`]: { username, name, pin, role: 'client', status: 'active', accountNumber, createdAt: nowIso() },
-    [`balances/${username}`]: { personal: 0, staging: 0 },
-    [`privateBills/${username}`]: null
+                        [`balances/${username}`]: { personal: 0, staging: 0 },
+                        [`privateBills/${username}`]: null
   });
   await createLedgerEntry({ type: 'client_created', userId: username, amount: 0, title: 'Client created', description: `${name} created with account ${accountNumber}.` });
   if (opening > 0) await transferFromTreasury(username, 'personal', opening, 'Opening deposit');
@@ -339,7 +352,6 @@ async function createSharedBill() {
   const amount = number($('bill-amount').value);
   const dueDate = $('bill-due-date').value;
   if (!userId || !name || amount <= 0) return showToast('Enter a client, bill name, and amount.', 'warning');
-
   const ref = db.ref('bills').push();
   await ref.set({ userId, name, amount, dueDate: dueDate || '', status: 'open', createdAt: nowIso(), createdBy: currentUser });
   await createLedgerEntry({ type: 'bill_created', userId, amount, title: 'Shared bill recorded', description: `${name} was recorded${dueDate ? ` with due date ${dueDate}` : ''}.` });
@@ -354,7 +366,6 @@ async function createPrivateBill() {
   const dueDate = $('private-bill-due-date').value;
   const category = $('private-bill-category').value.trim();
   if (!name || amount <= 0) return showToast('Enter a bill name and amount.', 'warning');
-
   const ref = db.ref(`privateBills/${currentUser}`).push();
   await ref.set({ name, amount, dueDate: dueDate || '', category: category || 'Personal', status: 'open', createdAt: nowIso() });
   await createLedgerEntry({ type: 'private_bill_created', userId: currentUser, amount, title: 'Private bill added', description: `${name} added to your private planner.` });
@@ -403,7 +414,6 @@ async function payBill(billId) {
   const amount = number(bill.amount);
   const committed = await debitBillVault(bill.userId, amount);
   if (!committed) return showToast('Not enough money in the bill vault.', 'danger');
-
   await db.ref(`bills/${billId}`).update({ status: 'paid', paidAt: nowIso(), paidBy: currentUser });
   await createLedgerEntry({ type: 'bill_paid', userId: bill.userId, amount, title: 'Shared bill paid', description: `${bill.name} paid from bill vault by ${users[currentUser]?.name || currentUser}.` });
   showToast('Shared bill paid and recorded in ledger.', 'success');
@@ -416,7 +426,6 @@ async function payPrivateBill(billId) {
   const amount = number(bill.amount);
   const committed = await debitBillVault(currentUser, amount);
   if (!committed) return showToast('Not enough money in the bill vault.', 'danger');
-
   await db.ref(`privateBills/${currentUser}/${billId}`).update({ status: 'paid', paidAt: nowIso() });
   await createLedgerEntry({ type: 'private_bill_paid', userId: currentUser, amount, title: 'Private bill paid', description: `${bill.name} paid from your bill vault.` });
   showToast('Private bill paid from bill vault.', 'success');
@@ -450,12 +459,13 @@ function initModals() {
   treasuryFundModal = new bootstrap.Modal($('treasuryFundModal'));
 }
 
+// FIXED: Session restore now also uses exact class toggling
 function attemptSessionRestore() {
   const saved = localStorage.getItem(SESSION_KEY);
   if (saved && users[saved]?.status === 'active') {
     currentUser = saved;
-    $('login-wrapper').style.display = 'none';
-    $('app-wrapper').style.display = 'block';
+    $('login-wrapper').classList.add('d-none');
+    $('app-wrapper').classList.remove('d-none');
   }
 }
 
