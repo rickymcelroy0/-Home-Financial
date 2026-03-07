@@ -1,62 +1,54 @@
-# Home Financial Center - Windowed Rewrite
+# Home Financial Center — Fixed Glass Rewrite
 
-This package rewrites the original dashboard into a fuller Firebase Realtime Database app where each tile opens into its own dedicated account window.
+This package fully rewrites the uploaded HFC app and fixes the structural issues in the previous version.
+
+## What was fixed
+
+- unified the data model around top-level `balances/`
+- removed broken placeholder logic
+- fixed tile clicks so every tile opens its own dedicated account window
+- added session restore
+- added admin bootstrap (`admin / 0000`)
+- added client creation
+- added admin deposits
+- added bill creation
+- added client transfers between checking and staging
+- added bill payment from staging
+- added live ledger feeds in both the dashboard and popup windows
+- rebuilt the UI with a stronger iPhone-style glass look
 
 ## Files
 
-- `index_windowed_rewrite.html` - main login/dashboard app
-- `script_windowed_rewrite.js` - main app logic
-- `account_window.html` - popup account window UI
-- `account_window.js` - popup account logic
+- `index_fixed_glass.html` — main dashboard UI
+- `script_fixed_glass.js` — main dashboard logic
+- `account_fixed_glass.html` — popup account window UI
+- `account_fixed_glass.js` — popup account window logic
 
-## Firebase configuration used
-
-The database URL you supplied has already been applied:
-
-- `https://homefund-3b81a-default-rtdb.firebaseio.com/`
-
-The code also infers these project fields from that URL:
-
-- `projectId: homefund-3b81a`
-- `authDomain: homefund-3b81a.firebaseapp.com`
-- `storageBucket: homefund-3b81a.appspot.com`
-
-## Important
-
-Because you only supplied the database URL, this rewrite does **not** include values for:
-
-- `apiKey`
-- `appId`
-- `messagingSenderId`
-
-For Realtime Database-only usage this can still work depending on your Firebase setup and rules, but if your project requires the full web app config, paste the full Firebase Web SDK config into both JS files.
-
-## Current features
-
-- admin and client login flow
-- default admin bootstrap (`admin / 0000`)
-- session restore with localStorage
-- create client
-- record bill
-- admin deposit to checking
-- checking/staging transfers
-- real-time dashboards
-- account tiles open in separate windows
-- admin aggregate windows
-- client overview window
-- live activity feeds from the `ledger` path
-
-## Expected database paths
+## Firebase paths used
 
 - `users/`
+- `balances/`
 - `bills/`
 - `ledger/`
 
+## Firebase config currently included
+
+```js
+{
+  databaseURL: 'https://homefund-3b81a-default-rtdb.firebaseio.com/',
+  projectId: 'homefund-3b81a',
+  authDomain: 'homefund-3b81a.firebaseapp.com',
+  storageBucket: 'homefund-3b81a.appspot.com'
+}
+```
+
+If your project also requires `apiKey`, `appId`, or `messagingSenderId`, add them to both JS files.
+
 ## Deploy
 
-If you want to use these as your live files, rename:
+Rename these files for live use:
 
-- `index_windowed_rewrite.html` -> `index.html`
-- `script_windowed_rewrite.js` -> `script.js`
-- keep `account_window.html` and `account_window.js` in the same folder
-
+- `index_fixed_glass.html` → `index.html`
+- `script_fixed_glass.js` → `script.js`
+- `account_fixed_glass.html` → `account.html`
+- `account_fixed_glass.js` → `account.js`

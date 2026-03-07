@@ -8,356 +8,691 @@ const firebaseConfig = {
 if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-const SESSION_KEY = 'hfc_active_user';
-let currentUser = null;
-let systemUsers = {};
-let systemBills = {};
-let systemLedger = {};
-let clientModal, billModal, transferModal;
-let activeBillContext = 'admin';
-let clockTimer = null;
+const SESSION_KEY = 'hfc_session_v2';
+const DEFAULT_ADMIN = {
+  name: 'System Admin',
+  pin: '0000',
+  role: 'admin',
+  status: 'active'
+};
 
-function money(n){
-  return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(Number(n || 0));
-}
+const state = {
+  currentUser: null,
+  users: {},
+  balances: {},
+  bills: {},
+  ledger: {},
+  loans: {},
+  logs: {},
+  masterBankLedger: {},
+  system: {},
+  clockTimer: null,
+  listenersReady: false
+};
+
+const els = {};
+let modals = {};
+
+function qs(id){ return document.getElementById(id); }
+function money(n){ return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(n || 0)); }
+function sanitizeUserId(value){ return String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, ''); }
+function parseAmount(value){ const n = Number(value); return Number.isFinite(n) ? Number(n.toFixed(2)) : NaN; }
+function uid(prefix='id'){ return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`; }
 function nowIso(){ return new Date().toISOString(); }
-function uid(prefix='id'){ return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2,8)}`; }
-function sanitizeName(v){ return String(v || '').trim(); }
+function escapeHtml(value){ return String(value ?? '').replace(/[&<>'"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;' }[c])); }
 
-// FIXED: Number validation to prevent NaN corruption
-function toAmount(v){
-  const num = Number(v);
-  if (isNaN(num)) return 0;
-  return Math.round((num + Number.EPSILON) * 100) / 100;
+function getUser(userId){
+  if (userId === 'admin') return { ...DEFAULT_ADMIN, ...(state.users.admin || {}) };
+  return state.users[userId] || null;
+}
+
+function getBalance(userId){
+  return {
+    personal: Number(state.balances[userId]?.personal || 0),
+    staging: Number(state.balances[userId]?.staging || 0)
+  };
+}
+
+function getAllBills(){ return Object.entries(state.bills).map(([id, bill]) => ({ id, ...bill })); }
+function getBillsForUser(userId){ return getAllBills().filter(bill => bill.userId === userId); }
+function getOpenBillsForUser(userId){ return getBillsForUser(userId).filter(bill => bill.status !== 'paid' && bill.status !== 'split'); }
+function getPaidBillsForUser(userId){ return getBillsForUser(userId).filter(bill => bill.status === 'paid'); }
+function openBillTotalForUser(userId){ return getOpenBillsForUser(userId).reduce((sum, bill) => sum + Number(bill.amount || 0), 0); }
+function getLedgerItems(userId=null){
+  const items = Object.entries(state.ledger).map(([id, item]) => ({ id, ...item }));
+  const filtered = userId ? items.filter(item => item.userId === userId) : items;
+  return filtered.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 }
 
 function showToast(message, type='info'){
-  const c = document.getElementById('toast-container');
-  const el = document.createElement('div');
-  el.className = `toast align-items-center text-white bg-${type === 'danger' ? 'danger' : type} border-0 show mb-2`;
-  el.innerHTML = `<div class="d-flex"><div class="toast-body">${message}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>`;
-  c.appendChild(el);
-  setTimeout(() => el.remove(), 3500);
+  const container = qs('toast-container');
+  if (!container) return;
+  const iconMap = { success:'circle-check', danger:'triangle-exclamation', warning:'circle-exclamation', info:'circle-info' };
+  const toast = document.createElement('div');
+  toast.className = `alert alert-${type} border-0 shadow-lg mb-2`;
+  toast.style.background = 'rgba(12, 22, 36, .92)';
+  toast.style.color = '#eef6ff';
+  toast.style.borderRadius = '16px';
+  toast.innerHTML = `<i class="fa-solid fa-${iconMap[type] || 'circle-info'} me-2"></i>${escapeHtml(message)}`;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(-8px)';
+    toast.style.transition = 'all .22s ease';
+    setTimeout(() => toast.remove(), 240);
+  }, 3000);
 }
-function showLoginError(msg){
-  const err = document.getElementById('login-err');
-  err.textContent = msg;
-  err.classList.remove('d-none');
+
+function showLoginError(message){
+  els.loginErr.textContent = message;
+  els.loginErr.classList.remove('d-none');
 }
-function clearLoginError(){ document.getElementById('login-err').classList.add('d-none'); }
-function setSession(user){ localStorage.setItem(SESSION_KEY, user); }
-function clearSession(){ localStorage.removeItem(SESSION_KEY); }
-function getOpenBillsForUser(userId){
-  return Object.values(systemBills).filter(b => b.userId === userId && b.status === 'open');
+
+function clearLoginError(){
+  els.loginErr.textContent = '';
+  els.loginErr.classList.add('d-none');
 }
-function getOpenBillTotalForUser(userId){
-  return getOpenBillsForUser(userId).reduce((sum,b) => sum + Number(b.amount || 0), 0);
+
+function persistSession(){
+  if (!state.currentUser) {
+    localStorage.removeItem(SESSION_KEY);
+    return;
+  }
+  localStorage.setItem(SESSION_KEY, JSON.stringify({ userId: state.currentUser }));
 }
-function getSystemOpenBillTotal(){
-  return Object.values(systemBills).filter(b => b.status === 'open').reduce((sum,b) => sum + Number(b.amount || 0), 0);
+
+function restoreSession(){
+  try {
+    const session = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+    if (!session?.userId) return;
+    const user = getUser(session.userId);
+    if (user && user.status !== 'disabled') {
+      state.currentUser = session.userId;
+      showApp();
+    }
+  } catch {
+    localStorage.removeItem(SESSION_KEY);
+  }
 }
-function buildLedgerItemsForUser(userId){
-  return Object.entries(systemLedger)
-  .map(([id, item]) => ({ id, ...item }))
-  .filter(item => item.userId === userId)
-  .sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+function switchView(viewName){
+  document.querySelectorAll('.view').forEach(view => view.classList.remove('active'));
+  qs(`view-${viewName}`)?.classList.add('active');
 }
-function buildSystemLedgerItems(){
-  return Object.entries(systemLedger)
-  .map(([id, item]) => ({ id, ...item }))
-  .sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+// FIXED: Removed the d-flex class so the login page completely vanishes
+function showApp(){
+  if (!state.currentUser) return;
+
+  els.loginWrapper.classList.replace('d-flex', 'd-none');
+  els.appWrapper.style.display = 'block';
+
+  const user = getUser(state.currentUser);
+  const role = user?.role || 'client';
+  els.sessionUserLabel.textContent = `${user?.name || state.currentUser} · ${role}`;
+  if (role === 'admin') {
+    switchView('admin');
+  } else {
+    switchView('client');
+    els.clientWelcomeName.textContent = `Welcome, ${user?.name || state.currentUser}`;
+  }
+  persistSession();
+  render();
+  startClock();
 }
+
+function showLogin(){
+  state.currentUser = null;
+  els.appWrapper.style.display = 'none';
+
+  els.loginWrapper.classList.replace('d-none', 'd-flex');
+
+  els.loginPin.value = '';
+  persistSession();
+}
+
+function startClock(){
+  if (state.clockTimer) return;
+  const tick = () => { els.clockTime.textContent = new Date().toLocaleTimeString([], { hour12:false }); };
+  tick();
+  state.clockTimer = setInterval(tick, 1000);
+}
+
+async function ensureAdminBootstrap(){
+  const usersRef = db.ref('users/admin');
+  const balancesRef = db.ref('balances/admin');
+  const [userSnap, balanceSnap] = await Promise.all([usersRef.get(), balancesRef.get()]);
+  const writes = [];
+  if (!userSnap.exists()) writes.push(usersRef.set(DEFAULT_ADMIN));
+  if (!balanceSnap.exists()) writes.push(balancesRef.set({ personal:0, staging:0 }));
+  if (writes.length) await Promise.all(writes);
+}
+
+function authenticateUser(){
+  clearLoginError();
+  const userId = sanitizeUserId(els.loginUser.value);
+  const pin = String(els.loginPin.value || '').trim();
+
+  if (!userId || !pin) return showLoginError('Missing credentials.');
+
+  const user = getUser(userId);
+  if (!user || user.status === 'disabled') return showLoginError('Account not found or disabled.');
+  if (String(user.pin) !== pin) return showLoginError('Authentication failed.');
+
+  state.currentUser = userId;
+  els.loginPin.value = '';
+  showApp();
+  showToast(`Secure session established for ${user.name || userId}.`, 'success');
+}
+
+function logoutUser(){
+  showToast('Session terminated.', 'warning');
+  showLogin();
+}
+
+function populateClientSelect(selectId, options={ includeAdmin:false, placeholder:null }){
+  const select = qs(selectId);
+  if (!select) return;
+  const users = Object.entries(state.users)
+  .filter(([id, user]) => options.includeAdmin || user.role !== 'admin')
+  .sort((a,b) => (a[1].name || a[0]).localeCompare(b[1].name || b[0]));
+
+  const html = [];
+  if (options.placeholder) html.push(`<option value="">${escapeHtml(options.placeholder)}</option>`);
+  users.forEach(([userId, user]) => {
+    html.push(`<option value="${escapeHtml(userId)}">${escapeHtml(user.name || userId)} (${escapeHtml(userId)})</option>`);
+  });
+  select.innerHTML = html.join('');
+}
+
+function populatePayBillSelect(){
+  const select = els.payBillSelect;
+  if (!select) return;
+  const userId = state.currentUser;
+  const openBills = getOpenBillsForUser(userId);
+  if (!openBills.length) {
+    select.innerHTML = '<option value="">No open bills</option>';
+    return;
+  }
+  select.innerHTML = openBills
+  .sort((a,b) => new Date(a.dueDate || 0) - new Date(b.dueDate || 0))
+  .map(bill => `<option value="${escapeHtml(bill.id)}">${escapeHtml(bill.name)} · ${money(bill.amount)}${bill.dueDate ? ` · due ${escapeHtml(bill.dueDate)}` : ''}</option>`)
+  .join('');
+}
+
+// NEW: Populates the dropdown selector for the split bill feature
+function populateSplitBillSelect(){
+  const select = els.splitBillSelect;
+  if (!select) return;
+  const openBills = getAllBills().filter(b => b.status === 'open');
+  if (!openBills.length) {
+    select.innerHTML = '<option value="">No open bills available</option>';
+    return;
+  }
+  select.innerHTML = openBills
+  .sort((a,b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
+  .map(b => `<option value="${b.id}">${escapeHtml(b.name)} · ${money(b.amount)} (Currently billed to ${escapeHtml(getUser(b.userId)?.name || b.userId)})</option>`)
+  .join('');
+}
+
+function openWindow(kind, userId=state.currentUser){
+  const url = `account.html?kind=${encodeURIComponent(kind)}&user=${encodeURIComponent(userId)}`;
+  window.open(url, '_blank', 'width=1180,height=860,resizable=yes,scrollbars=yes');
+}
+
 function renderLedgerFeed(targetId, items){
-  const target = document.getElementById(targetId);
+  const target = qs(targetId);
   if (!target) return;
-  if (!items.length){
-    target.innerHTML = '<div class="text-muted py-3">No activity yet.</div>';
+  if (!items.length) {
+    target.innerHTML = '<div class="list-group-item text-muted">No activity yet.</div>';
     return;
   }
   target.innerHTML = items.slice(0, 12).map(item => `
-  <div class="list-group-item border-0 border-bottom px-0 ledger-row">
-  <div class="d-flex justify-content-between gap-3">
+  <div class="list-group-item">
+  <div class="d-flex justify-content-between gap-3 align-items-start">
   <div>
-  <div class="fw-semibold">${item.title || 'Ledger Event'}</div>
-  <small>${item.description || ''}</small>
+  <div class="fw-semibold">${escapeHtml(item.title || 'Activity')}</div>
+  <div class="text-muted small">${escapeHtml(item.description || '')}</div>
   </div>
   <div class="text-end">
   <div class="fw-semibold">${item.amount != null ? money(item.amount) : ''}</div>
-  <small>${new Date(item.createdAt || Date.now()).toLocaleString()}</small>
+  <div class="text-muted small">${new Date(item.createdAt || Date.now()).toLocaleString()}</div>
   </div>
   </div>
   </div>`).join('');
 }
-function updateSessionUserLabel(){
-  const label = document.getElementById('session-user-label');
-  if (!currentUser || !systemUsers[currentUser]) return label.textContent = '';
-  const u = systemUsers[currentUser];
-  label.textContent = `${u.name || currentUser} · ${u.role}`;
-}
-function switchView(name){
-  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-  const el = document.getElementById(`view-${name}`);
-  if (el) el.classList.add('active');
-}
-function renderAdminTable(){
-  const body = document.getElementById('adminUsersBody');
-  if (!body) return;
-  const rows = Object.entries(systemUsers)
-  .filter(([_,u]) => u.role !== 'admin')
-  .sort((a,b) => (a[1].name || '').localeCompare(b[1].name || ''));
-  if (!rows.length){
-    body.innerHTML = '<tr><td colspan="5" class="text-muted">No client accounts yet.</td></tr>';
-    return;
-  }
-  body.innerHTML = rows.map(([userId,u]) => `
-  <tr>
-  <td><strong>${u.name || userId}</strong><br><small class="text-muted">${userId}</small></td>
-  <td class="text-success fw-semibold">${money(u.balances?.personal || 0)}</td>
-  <td class="text-info fw-semibold">${money(u.balances?.staging || 0)}</td>
-  <td class="text-danger fw-semibold">${money(getOpenBillTotalForUser(userId))}</td>
-  <td>
-  <div class="d-flex gap-2 flex-wrap">
-  <button class="btn btn-sm btn-outline-primary" onclick="openDedicatedWindow('client_overview','${userId}')">Open</button>
-  <button class="btn btn-sm btn-outline-success" onclick="adminDepositPrompt('${userId}')">Deposit</button>
-  <button class="btn btn-sm btn-outline-dark" onclick="prefillBillUser('${userId}')">Bill</button>
-  </div>
-  </td>
-  </tr>`).join('');
-}
-function populateBillUserOptions(){
-  const select = document.getElementById('bill-user');
-  if (!select) return;
-  const clients = Object.entries(systemUsers).filter(([_,u]) => u.role === 'client');
-  select.innerHTML = clients.map(([userId,u]) => `<option value="${userId}">${u.name || userId} (${userId})</option>`).join('');
-}
-function updateDashboard(){
-  const users = Object.values(systemUsers);
-  const totalCash = users.reduce((sum,u) => sum + Number(u.balances?.personal || 0), 0);
-  const totalStaging = users.reduce((sum,u) => sum + Number(u.balances?.staging || 0), 0);
-  document.getElementById('admin-total-cash').textContent = money(totalCash);
-  document.getElementById('admin-total-staging').textContent = money(totalStaging);
-  document.getElementById('admin-open-bills-total').textContent = money(getSystemOpenBillTotal());
 
-  if (currentUser && systemUsers[currentUser]){
-    const u = systemUsers[currentUser];
-    document.getElementById('client-welcome-name').textContent = `Welcome, ${u.name || currentUser}`;
-    document.getElementById('dash-personal-bal').textContent = money(u.balances?.personal || 0);
-    document.getElementById('dash-staging-bal').textContent = money(u.balances?.staging || 0);
-    document.getElementById('client-total-due').textContent = money(getOpenBillTotalForUser(currentUser));
-    renderLedgerFeed('client-ledger-feed', buildLedgerItemsForUser(currentUser));
+function renderAdminUsers(){
+  const tbody = els.adminUsersBody;
+  const rows = Object.entries(state.users)
+  .filter(([_, user]) => user.role !== 'admin')
+  .sort((a,b) => (a[1].name || a[0]).localeCompare(b[1].name || b[0]))
+  .map(([userId, user]) => {
+    const balance = getBalance(userId);
+    const openTotal = openBillTotalForUser(userId);
+    return `
+    <tr>
+    <td>
+    <div class="fw-semibold">${escapeHtml(user.name || userId)}</div>
+    <div class="text-muted small">${escapeHtml(userId)} · ${escapeHtml(user.status || 'active')}</div>
+    </td>
+    <td>${money(balance.personal)}</td>
+    <td>${money(balance.staging)}</td>
+    <td>${money(openTotal)}</td>
+    <td>
+    <div class="action-stack">
+    <button class="btn btn-sm btn-outline-light" data-action="open-overview" data-user="${escapeHtml(userId)}"><i class="fa-solid fa-up-right-from-square me-1"></i>Open</button>
+    <button class="btn btn-sm btn-outline-light" data-action="deposit" data-user="${escapeHtml(userId)}"><i class="fa-solid fa-money-bill-wave me-1"></i>Deposit</button>
+    <button class="btn btn-sm btn-outline-light" data-action="pay-next" data-user="${escapeHtml(userId)}"><i class="fa-solid fa-circle-check me-1"></i>Pay</button>
+    </div>
+    </td>
+    </tr>`;
+  });
+
+  tbody.innerHTML = rows.length ? rows.join('') : '<tr><td colspan="5" class="text-muted">No clients yet.</td></tr>';
+}
+
+function render(){
+  const totalCash = Object.values(state.balances).reduce((sum, bal) => sum + Number(bal.personal || 0), 0);
+  const totalStaging = Object.values(state.balances).reduce((sum, bal) => sum + Number(bal.staging || 0), 0);
+  const openBills = getAllBills().filter(bill => bill.status === 'open');
+  const openBillTotal = openBills.reduce((sum, bill) => sum + Number(bill.amount || 0), 0);
+
+  els.adminTotalCash.textContent = money(totalCash);
+  els.adminTotalStaging.textContent = money(totalStaging);
+  els.adminOpenBillsTotal.textContent = money(openBillTotal);
+
+  if (state.currentUser) {
+    const balance = getBalance(state.currentUser);
+    els.dashPersonalBal.textContent = money(balance.personal);
+    els.dashStagingBal.textContent = money(balance.staging);
+    els.clientTotalDue.textContent = money(openBillTotalForUser(state.currentUser));
   }
 
-  renderAdminTable();
-  populateBillUserOptions();
-  renderLedgerFeed('admin-ledger-feed', buildSystemLedgerItems());
-  updateSessionUserLabel();
+  renderAdminUsers();
+  renderLedgerFeed('admin-ledger-feed', getLedgerItems());
+  renderLedgerFeed('client-ledger-feed', getLedgerItems(state.currentUser));
+  populateClientSelect('bill-user', { placeholder:'Select client' });
+  populateClientSelect('deposit-user', { placeholder:'Select client' });
+  populatePayBillSelect();
+  populateSplitBillSelect(); // Make sure the split dropdown stays current
 }
-function ensureDefaultAdmin(){
-  db.ref('users/admin').transaction(curr => curr || {
-    name:'System Admin', pin:'0000', role:'admin', status:'active',
-    balances:{personal:0, staging:0}, createdAt: nowIso()
+
+function attachRealtimeListeners(){
+  if (state.listenersReady) return;
+  state.listenersReady = true;
+  db.ref('users').on('value', snap => {
+    state.users = snap.val() || {};
+    if (!state.users.admin) state.users.admin = { ...DEFAULT_ADMIN };
+    if (state.currentUser && !getUser(state.currentUser)) {
+      showToast('Your account is no longer available.', 'warning');
+      showLogin();
+      return;
+    }
+    if (!state.currentUser) restoreSession();
+    render();
+  });
+  db.ref('balances').on('value', snap => { state.balances = snap.val() || {}; render(); });
+  db.ref('bills').on('value', snap => { state.bills = snap.val() || {}; render(); });
+  db.ref('ledger').on('value', snap => { state.ledger = snap.val() || {}; render(); });
+  db.ref('loans').on('value', snap => { state.loans = snap.val() || {}; });
+  db.ref('logs').on('value', snap => { state.logs = snap.val() || {}; });
+  db.ref('masterBankLedger').on('value', snap => { state.masterBankLedger = snap.val() || {}; });
+  db.ref('system').on('value', snap => { state.system = snap.val() || {}; });
+}
+
+async function appendLedger(entry){
+  const id = uid('ledger');
+  await db.ref(`ledger/${id}`).set({ createdAt: nowIso(), ...entry });
+}
+
+function updateBalanceTransaction(userId, updater){
+  return db.ref(`balances/${userId}`).transaction(current => {
+    const base = {
+      personal: Number(current?.personal || 0),
+                                                  staging: Number(current?.staging || 0)
+    };
+    return updater(base);
   });
 }
 
-// FIXED: Display styling logic so the page doesn't scroll
-function authenticateUser(){
-  const rawUser = sanitizeName(document.getElementById('login-user').value).toLowerCase();
-  const pin = sanitizeName(document.getElementById('login-pin').value);
-  if (!rawUser || !pin) return showLoginError('Missing credentials.');
-  clearLoginError();
-
-  const fallbackAdmin = rawUser === 'admin' && pin === '0000';
-  const dbUser = systemUsers[rawUser];
-  const dbAuth = dbUser && String(dbUser.pin) === pin && dbUser.status === 'active';
-  if (!fallbackAdmin && !dbAuth) return showLoginError('Authentication failed.');
-
-  currentUser = rawUser;
-  setSession(rawUser);
-
-  document.getElementById('login-wrapper').classList.replace('d-flex', 'd-none');
-  document.getElementById('app-wrapper').style.display = 'block';
-
-  if (systemUsers[rawUser]?.role === 'admin' || rawUser === 'admin') switchView('admin');
-  else switchView('client');
-  updateDashboard();
-  showToast(`Secure session established for ${rawUser}.`, 'primary');
-}
-
-// FIXED: Display styling logic to restore login view correctly
-function logoutUser(){
-  currentUser = null;
-  clearSession();
-
-  document.getElementById('app-wrapper').style.display = 'none';
-  document.getElementById('login-wrapper').classList.replace('d-none', 'd-flex');
-
-  document.getElementById('login-user').value = '';
-  document.getElementById('login-pin').value = '';
-  showToast('Session terminated.', 'secondary');
-}
-
-// FIXED: Display styling logic for page reloads
-function restoreSession(){
-  const saved = localStorage.getItem(SESSION_KEY);
-  if (!saved) return;
-  if (!systemUsers[saved]) return clearSession();
-
-  currentUser = saved;
-  document.getElementById('login-wrapper').classList.replace('d-flex', 'd-none');
-  document.getElementById('app-wrapper').style.display = 'block';
-  switchView(systemUsers[saved].role === 'admin' ? 'admin' : 'client');
-  updateDashboard();
-}
-
-function appendLedger(entry){
-  return db.ref(`ledger/${uid('led')}`).set({ createdAt: nowIso(), ...entry });
-}
 async function createClient(){
-  const username = sanitizeName(document.getElementById('new-client-username').value).toLowerCase();
-  const name = sanitizeName(document.getElementById('new-client-name').value);
-  const pin = sanitizeName(document.getElementById('new-client-pin').value);
-  const opening = toAmount(document.getElementById('new-client-opening').value);
-  if (!username || !name || !pin) return showToast('Complete all client fields.', 'danger');
-  if (systemUsers[username]) return showToast('Username already exists.', 'danger');
+  const userId = sanitizeUserId(els.newClientUsername.value);
+  const name = String(els.newClientName.value || '').trim();
+  const pin = String(els.newClientPin.value || '').trim();
+  const opening = parseAmount(els.newClientOpening.value);
 
-  const payload = {
-    name, pin, role:'client', status:'active', createdAt: nowIso(),
-    balances:{ personal: opening, staging: 0 }
-  };
-  await db.ref(`users/${username}`).set(payload);
-  await appendLedger({ userId: username, type:'client_created', title:'Client Created', description:`${name} account opened.`, amount: opening, actor: currentUser });
-  if (opening > 0){
-    await appendLedger({ userId: username, type:'deposit', title:'Opening Deposit', description:'Opening balance posted to checking.', amount: opening, actor: currentUser });
-  }
-  clientModal.hide();
-  showToast(`${name} created successfully.`, 'success');
+  if (!userId || !name || !pin) return showToast('Fill out username, full name, and PIN.', 'warning');
+  if (Number.isNaN(opening) || opening < 0) return showToast('Opening deposit must be zero or more.', 'warning');
+  if (getUser(userId)) return showToast('That username already exists.', 'warning');
+
+  await db.ref(`users/${userId}`).set({ name, pin, role:'client', status:'active' });
+  await db.ref(`balances/${userId}`).set({ personal: opening, staging: 0 });
+  await appendLedger({
+    userId,
+    type:'client_created',
+    title:'Client created',
+    amount: opening,
+    description: `${name} account created${opening ? ` with opening deposit ${money(opening)}` : ''}.`
+  });
+
+  modals.client.hide();
+  els.newClientUsername.value = '';
+  els.newClientName.value = '';
+  els.newClientPin.value = '';
+  els.newClientOpening.value = '0';
+  showToast(`${name} was created successfully.`, 'success');
 }
-function prefillBillUser(userId){
-  activeBillContext = 'admin';
-  populateBillUserOptions();
-  document.getElementById('bill-user').value = userId;
-  billModal.show();
-}
-async function createBill(){
-  const userId = document.getElementById('bill-user').value || currentUser;
-  const name = sanitizeName(document.getElementById('bill-name').value);
-  const amount = toAmount(document.getElementById('bill-amount').value);
-  const dueDate = document.getElementById('bill-due-date').value || '';
-  if (!userId || !name || amount <= 0) return showToast('Enter a valid bill.', 'danger');
+
+async function recordBill(){
+  const userId = sanitizeUserId(els.billUser.value);
+  const name = String(els.billName.value || '').trim();
+  const amount = parseAmount(els.billAmount.value);
+  const dueDate = String(els.billDueDate.value || '').trim();
+
+  if (!userId || !name || Number.isNaN(amount) || amount <= 0) return showToast('Provide a client, bill name, and valid amount.', 'warning');
+
   const billId = uid('bill');
   await db.ref(`bills/${billId}`).set({
-    userId, name, amount, dueDate, status:'open', createdAt: nowIso(), createdBy: currentUser
+    userId,
+    name,
+    amount,
+    dueDate,
+    status:'open',
+    createdAt: nowIso(),
+                                      paidAt: null
   });
-  await appendLedger({ userId, type:'bill_created', title:'Bill Recorded', description:`${name}${dueDate ? ` · due ${dueDate}` : ''}`, amount, actor: currentUser, billId });
-  billModal.hide();
-  ['bill-name','bill-amount','bill-due-date'].forEach(id => document.getElementById(id).value = '');
-  showToast('Bill recorded.', 'success');
+  await appendLedger({
+    userId,
+    billId,
+    type:'bill_created',
+    title:'Bill recorded',
+    amount,
+    description: `${name}${dueDate ? ` due ${dueDate}` : ''}.`
+  });
+
+  modals.bill.hide();
+  els.billName.value = '';
+  els.billAmount.value = '';
+  els.billDueDate.value = '';
+  showToast(`${name} was added for ${getUser(userId)?.name || userId}.`, 'success');
 }
-async function runUserBalanceTransaction(userId, mutator){
-  return db.ref(`users/${userId}/balances`).transaction(curr => {
-    const balances = curr || { personal:0, staging:0 };
-    const next = mutator({
-      personal: Number(balances.personal || 0),
-                         staging: Number(balances.staging || 0)
-    });
+
+// NEW: The bill splitting logic
+async function splitBill(){
+  const billId = els.splitBillSelect.value;
+  const originalBill = state.bills[billId];
+  if (!originalBill || originalBill.status !== 'open') return showToast('Select a valid open bill.', 'warning');
+
+  const clients = Object.entries(state.users).filter(([_, u]) => u.role === 'client');
+  if (!clients.length) return showToast('No clients to split the bill with.', 'warning');
+
+  const splitAmount = parseAmount(originalBill.amount / clients.length);
+  if (splitAmount <= 0) return showToast('Amount too small to split.', 'warning');
+
+  const writes = [];
+  const timestamp = nowIso();
+
+  // Close original master bill
+  writes.push(db.ref(`bills/${billId}`).update({ status: 'split', splitAt: timestamp }));
+
+  // Distribute it to all client accounts
+  clients.forEach(([clientId, client]) => {
+    const newBillId = uid('bill');
+    writes.push(db.ref(`bills/${newBillId}`).set({
+      userId: clientId,
+      name: `${originalBill.name} (Split)`,
+                                                 amount: splitAmount,
+                                                 dueDate: originalBill.dueDate || '',
+                                                 status: 'open',
+                                                 createdAt: timestamp,
+                                                 parentId: billId
+    }));
+    const ledgerId = uid('ledger');
+    writes.push(db.ref(`ledger/${ledgerId}`).set({
+      userId: clientId,
+      billId: newBillId,
+      type: 'bill_created',
+      title: 'Split Bill Assigned',
+      amount: splitAmount,
+      description: `Your portion of ${originalBill.name}.`,
+      createdAt: timestamp
+    }));
+  });
+
+  await Promise.all(writes);
+  modals.splitBill.hide();
+  showToast(`Bill successfully split among ${clients.length} clients.`, 'success');
+}
+
+async function makeDeposit(userIdOverride=null){
+  const userId = sanitizeUserId(userIdOverride || els.depositUser.value);
+  const amount = parseAmount(els.depositAmount.value);
+  const memo = String(els.depositMemo.value || '').trim();
+  if (!userId || Number.isNaN(amount) || amount <= 0) return showToast('Select a client and enter a valid deposit amount.', 'warning');
+
+  const result = await updateBalanceTransaction(userId, balance => ({ ...balance, personal: Number((balance.personal + amount).toFixed(2)) }));
+  if (!result.committed) return showToast('Deposit could not be completed.', 'danger');
+
+  await appendLedger({
+    userId,
+    type:'deposit',
+    title:'Deposit posted',
+    amount,
+    description: memo || 'Admin deposit to checking.'
+  });
+
+  modals.deposit.hide();
+  els.depositAmount.value = '';
+  els.depositMemo.value = '';
+  showToast(`Deposit posted to ${getUser(userId)?.name || userId}.`, 'success');
+}
+
+async function transferFunds(){
+  const userId = state.currentUser;
+  const direction = els.transferDirection.value;
+  const amount = parseAmount(els.transferAmount.value);
+  if (Number.isNaN(amount) || amount <= 0) return showToast('Enter a valid transfer amount.', 'warning');
+
+  let failed = null;
+  const result = await updateBalanceTransaction(userId, balance => {
+    const next = { ...balance };
+    if (direction === 'personal_to_staging') {
+      if (next.personal < amount) { failed = 'Insufficient checking funds.'; return; }
+      next.personal = Number((next.personal - amount).toFixed(2));
+      next.staging = Number((next.staging + amount).toFixed(2));
+    } else {
+      if (next.staging < amount) { failed = 'Insufficient staging funds.'; return; }
+      next.staging = Number((next.staging - amount).toFixed(2));
+      next.personal = Number((next.personal + amount).toFixed(2));
+    }
     return next;
   });
+
+  if (!result.committed || failed) return showToast(failed || 'Transfer failed.', 'danger');
+
+  const description = direction === 'personal_to_staging'
+  ? 'Funds moved from checking to staging.'
+  : 'Funds moved from staging to checking.';
+  await appendLedger({ userId, type:'transfer', title:'Funds transferred', amount, description });
+  modals.transfer.hide();
+  els.transferAmount.value = '';
+  showToast('Transfer completed.', 'success');
 }
-async function createDeposit(userId, amount){
-  amount = toAmount(amount);
-  if (amount <= 0) throw new Error('Invalid deposit amount.');
-  await runUserBalanceTransaction(userId, balances => ({ ...balances, personal: toAmount(balances.personal + amount) }));
-  await appendLedger({ userId, type:'deposit', title:'Deposit Posted', description:'Deposit to checking.', amount, actor: currentUser });
-}
-async function createTransfer(){
-  const direction = document.getElementById('transfer-direction').value;
-  const amount = toAmount(document.getElementById('transfer-amount').value);
-  if (amount <= 0) return showToast('Enter a valid transfer amount.', 'danger');
-  let insufficient = false;
-  await runUserBalanceTransaction(currentUser, balances => {
-    if (direction === 'personal_to_staging'){
-      if (balances.personal < amount){ insufficient = true; return; }
-      return { personal: toAmount(balances.personal - amount), staging: toAmount(balances.staging + amount) };
-    }
-    if (balances.staging < amount){ insufficient = true; return; }
-    return { personal: toAmount(balances.personal + amount), staging: toAmount(balances.staging - amount) };
+
+async function payBill(billIdOverride=null, userIdOverride=null){
+  const billId = billIdOverride || els.payBillSelect.value;
+  const bill = state.bills[billId];
+  const userId = userIdOverride || state.currentUser;
+  if (!bill || bill.status === 'paid' || bill.status === 'split') return showToast('Select an open bill.', 'warning');
+  const amount = Number(bill.amount || 0);
+  let failed = null;
+
+  const result = await updateBalanceTransaction(userId, balance => {
+    const next = { ...balance };
+    if (next.staging < amount) { failed = 'Not enough staging funds to pay this bill.'; return; }
+    next.staging = Number((next.staging - amount).toFixed(2));
+    return next;
   });
-  if (insufficient) return showToast('Insufficient funds.', 'danger');
+
+  if (!result.committed || failed) return showToast(failed || 'Bill payment failed.', 'danger');
+
+  await db.ref(`bills/${billId}`).update({ status:'paid', paidAt: nowIso() });
   await appendLedger({
-    userId: currentUser,
-    type:'transfer',
-    title:'Balance Transfer',
-    description: direction === 'personal_to_staging' ? 'Checking → Staging' : 'Staging → Checking',
+    userId,
+    billId,
+    type:'bill_paid',
+    title:'Bill paid',
     amount,
-    actor: currentUser
+    description: `${bill.name} paid from staging.`
   });
-  transferModal.hide();
-  document.getElementById('transfer-amount').value = '';
-  showToast('Transfer complete.', 'success');
-}
-async function adminDepositPrompt(userId){
-  const input = window.prompt(`Deposit amount for ${userId}:`, '0.00');
-  if (input == null) return;
-  try{
-    await createDeposit(userId, input);
-    showToast('Deposit posted.', 'success');
-  }catch(err){
-    showToast(err.message, 'danger');
-  }
-}
-function openDedicatedWindow(kind, userId=currentUser){
-  const url = `account.html?kind=${encodeURIComponent(kind)}&user=${encodeURIComponent(userId)}`;
-  window.open(url, '_blank', 'width=1100,height=800,resizable=yes,scrollbars=yes');
-}
-function startClock(){
-  if (clockTimer) clearInterval(clockTimer);
-  const render = () => document.getElementById('clockTime').textContent = new Date().toLocaleTimeString([], { hour12:false });
-  render();
-  clockTimer = setInterval(render, 1000);
-}
-function wireEvents(){
-  clientModal = new bootstrap.Modal(document.getElementById('clientModal'));
-  billModal = new bootstrap.Modal(document.getElementById('billModal'));
-  transferModal = new bootstrap.Modal(document.getElementById('transferModal'));
 
-  document.getElementById('login-btn').addEventListener('click', authenticateUser);
-  document.getElementById('logout-btn').addEventListener('click', logoutUser);
-  document.getElementById('save-client-btn').addEventListener('click', createClient);
-  document.getElementById('save-bill-btn').addEventListener('click', createBill);
-  document.getElementById('save-transfer-btn').addEventListener('click', createTransfer);
-  document.getElementById('open-create-client-modal').addEventListener('click', () => clientModal.show());
-  document.getElementById('open-create-bill-modal-admin').addEventListener('click', () => { activeBillContext = 'admin'; populateBillUserOptions(); billModal.show(); });
-  document.getElementById('open-create-bill-modal-client').addEventListener('click', () => {
-    activeBillContext = 'client'; populateBillUserOptions(); document.getElementById('bill-user').value = currentUser; billModal.show();
-  });
-  document.getElementById('open-transfer-modal').addEventListener('click', () => transferModal.show());
-  document.getElementById('login-user').addEventListener('keyup', e => e.key === 'Enter' && authenticateUser());
-  document.getElementById('login-pin').addEventListener('keyup', e => e.key === 'Enter' && authenticateUser());
-  document.querySelectorAll('[data-open-window]').forEach(el => {
-    el.addEventListener('click', () => openDedicatedWindow(el.dataset.openWindow));
-  });
+  if (modals.payBill) modals.payBill.hide();
+  showToast(`${bill.name} was paid successfully.`, 'success');
 }
 
-function attachListeners(){
-  db.ref('users').on('value', snap => {
-    systemUsers = snap.val() || {};
-    updateDashboard();
+function openDepositModal(prefillUserId=''){
+  populateClientSelect('deposit-user', { placeholder:'Select client' });
+  els.depositUser.value = prefillUserId;
+  els.depositAmount.value = '';
+  els.depositMemo.value = '';
+  modals.deposit.show();
+}
+
+function openBillModal(prefillUserId=''){
+  populateClientSelect('bill-user', { placeholder:'Select client' });
+  els.billUser.value = prefillUserId || (getUser(state.currentUser)?.role === 'client' ? state.currentUser : '');
+  modals.bill.show();
+}
+
+function openPayBillModal(){
+  populatePayBillSelect();
+  modals.payBill.show();
+}
+
+function wireEventListeners(){
+  els.loginBtn.addEventListener('click', authenticateUser);
+  els.loginUser.addEventListener('keydown', e => { if (e.key === 'Enter') authenticateUser(); });
+  els.loginPin.addEventListener('keydown', e => { if (e.key === 'Enter') authenticateUser(); });
+  els.logoutBtn.addEventListener('click', logoutUser);
+
+  els.openCreateClientModal.addEventListener('click', () => modals.client.show());
+  els.openCreateBillModalAdmin.addEventListener('click', () => openBillModal());
+  els.openCreateBillModalClient.addEventListener('click', () => openBillModal(state.currentUser));
+  els.openTransferModal.addEventListener('click', () => modals.transfer.show());
+  els.openDepositModal.addEventListener('click', () => openDepositModal());
+  els.openPayBillModal.addEventListener('click', openPayBillModal);
+
+  // NEW: Wire up the Split Bill modal
+  els.openSplitBillModal.addEventListener('click', () => {
+    populateSplitBillSelect();
+    modals.splitBill.show();
   });
-  db.ref('bills').on('value', snap => {
-    systemBills = snap.val() || {};
-    updateDashboard();
-  });
-  db.ref('ledger').on('value', snap => {
-    systemLedger = snap.val() || {};
-    updateDashboard();
+
+  els.saveClientBtn.addEventListener('click', () => createClient().catch(handleError));
+  els.saveBillBtn.addEventListener('click', () => recordBill().catch(handleError));
+
+  // NEW: Wire up the Split Bill execute button
+  els.confirmSplitBillBtn.addEventListener('click', () => splitBill().catch(handleError));
+
+  els.saveTransferBtn.addEventListener('click', () => transferFunds().catch(handleError));
+  els.saveDepositBtn.addEventListener('click', () => makeDeposit().catch(handleError));
+  els.confirmPayBillBtn.addEventListener('click', () => payBill().catch(handleError));
+
+  document.addEventListener('click', event => {
+    const tile = event.target.closest('.tile');
+    if (tile) {
+      const kind = tile.dataset.openWindow;
+      if (kind) openWindow(kind);
+      return;
+    }
+
+    const actionButton = event.target.closest('[data-action]');
+    if (!actionButton) return;
+    const action = actionButton.dataset.action;
+    const userId = actionButton.dataset.user;
+    if (action === 'open-overview') openWindow('client_overview', userId);
+    if (action === 'deposit') openDepositModal(userId);
+    if (action === 'pay-next') {
+      const nextBill = getOpenBillsForUser(userId).sort((a,b) => new Date(a.dueDate || 0) - new Date(b.dueDate || 0))[0];
+      if (!nextBill) return showToast('This client has no open bills.', 'info');
+      payBill(nextBill.id, userId).catch(handleError);
+    }
   });
 }
 
-// FIXED: Restores session once on load
-document.addEventListener('DOMContentLoaded', () => {
-  wireEvents();
-  ensureDefaultAdmin();
-  attachListeners();
-  startClock();
-  restoreSession();
-});
+function handleError(error){
+  console.error(error);
+  showToast(error?.message || 'Something went wrong.', 'danger');
+}
+
+function cacheElements(){
+  Object.assign(els, {
+    loginWrapper: qs('login-wrapper'),
+                appWrapper: qs('app-wrapper'),
+                loginUser: qs('login-user'),
+                loginPin: qs('login-pin'),
+                loginBtn: qs('login-btn'),
+                loginErr: qs('login-err'),
+                sessionUserLabel: qs('session-user-label'),
+                clockTime: qs('clockTime'),
+                logoutBtn: qs('logout-btn'),
+                clientWelcomeName: qs('client-welcome-name'),
+                adminTotalCash: qs('admin-total-cash'),
+                adminTotalStaging: qs('admin-total-staging'),
+                adminOpenBillsTotal: qs('admin-open-bills-total'),
+                adminUsersBody: qs('adminUsersBody'),
+                dashPersonalBal: qs('dash-personal-bal'),
+                dashStagingBal: qs('dash-staging-bal'),
+                clientTotalDue: qs('client-total-due'),
+                openCreateClientModal: qs('open-create-client-modal'),
+                openCreateBillModalAdmin: qs('open-create-bill-modal-admin'),
+                openCreateBillModalClient: qs('open-create-bill-modal-client'),
+                openTransferModal: qs('open-transfer-modal'),
+                openDepositModal: qs('open-deposit-modal'),
+                openPayBillModal: qs('open-pay-bill-modal'),
+                openSplitBillModal: qs('open-split-bill-modal'), // NEW
+                newClientUsername: qs('new-client-username'),
+                newClientName: qs('new-client-name'),
+                newClientPin: qs('new-client-pin'),
+                newClientOpening: qs('new-client-opening'),
+                saveClientBtn: qs('save-client-btn'),
+                billUser: qs('bill-user'),
+                billName: qs('bill-name'),
+                billAmount: qs('bill-amount'),
+                billDueDate: qs('bill-due-date'),
+                saveBillBtn: qs('save-bill-btn'),
+                splitBillSelect: qs('split-bill-select'), // NEW
+                confirmSplitBillBtn: qs('confirm-split-bill-btn'), // NEW
+                transferDirection: qs('transfer-direction'),
+                transferAmount: qs('transfer-amount'),
+                saveTransferBtn: qs('save-transfer-btn'),
+                depositUser: qs('deposit-user'),
+                depositAmount: qs('deposit-amount'),
+                depositMemo: qs('deposit-memo'),
+                saveDepositBtn: qs('save-deposit-btn'),
+                payBillSelect: qs('pay-bill-select'),
+                confirmPayBillBtn: qs('confirm-pay-bill-btn')
+  });
+}
+
+function initModals(){
+  modals = {
+    client: new bootstrap.Modal(qs('clientModal')),
+    bill: new bootstrap.Modal(qs('billModal')),
+    splitBill: new bootstrap.Modal(qs('splitBillModal')), // NEW
+    transfer: new bootstrap.Modal(qs('transferModal')),
+    deposit: new bootstrap.Modal(qs('depositModal')),
+    payBill: new bootstrap.Modal(qs('payBillModal'))
+  };
+}
+
+async function init(){
+  cacheElements();
+  initModals();
+  wireEventListeners();
+  await ensureAdminBootstrap();
+  attachRealtimeListeners();
+}
+
+init().catch(handleError);

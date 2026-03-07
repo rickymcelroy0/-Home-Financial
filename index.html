@@ -8,169 +8,254 @@
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
   <style>
     :root{
-      --hfc-navy:#0a2540;
-      --hfc-slate:#1f2937;
-      --hfc-bg:#f6f9fc;
-      --hfc-border:#e5e7eb;
+      --bg-1:#071321;
+      --glass:rgba(255,255,255,.12);
+      --glass-border:rgba(255,255,255,.22);
+      --text:#e8f1ff;
+      --muted:rgba(232,241,255,.74);
     }
-    body{background:var(--hfc-bg); color:#334155; font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}
-    .navbar-custom{background:rgba(255,255,255,.92); backdrop-filter:blur(10px); border-bottom:1px solid var(--hfc-border);}
-    .card.hfc-card{border:1px solid var(--hfc-border); border-radius:18px; box-shadow:0 10px 30px rgba(15,23,42,.05);}
-    .tile{cursor:pointer; transition:transform .18s ease, box-shadow .18s ease;}
-    .tile:hover{transform:translateY(-2px); box-shadow:0 14px 30px rgba(15,23,42,.08);}
+    *{box-sizing:border-box}
+    body{
+      margin: 0;
+      padding: 0;
+      color:var(--text);
+      font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      background-color: var(--bg-1);
+    }
+
+    #login-wrapper{
+      min-height:100vh;
+      background: linear-gradient(rgba(7, 19, 33, 0.4), rgba(14, 47, 82, 0.8)),
+                  url('https://images.unsplash.com/photo-1541278107931-e006523892df?q=80&w=2000&auto=format&fit=crop') center/cover fixed;
+    }
+
+    #app-wrapper{
+      min-height:100vh;
+      background: linear-gradient(rgba(7, 19, 33, 0.65), rgba(14, 47, 82, 0.85)),
+                  url('https://images.unsplash.com/photo-1534447677768-be436bb09401?q=80&w=2000&auto=format&fit=crop') center/cover fixed;
+    }
+
+    .glass, .modal-content, .navbar-custom, .list-group-item, .form-control, .form-select, .card.hfc-card{
+      background:linear-gradient(180deg, rgba(255,255,255,.18), rgba(255,255,255,.08));
+      border:1px solid var(--glass-border);
+      backdrop-filter:blur(22px) saturate(165%);
+      -webkit-backdrop-filter:blur(22px) saturate(165%);
+      box-shadow:0 14px 40px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.18);
+    }
+    .card.hfc-card{border-radius:28px; color:var(--text); overflow:hidden;}
+    .card.hfc-card .text-muted, .section-label, .table thead th, .small-note{color:var(--muted)!important}
+    .section-label{font-size:.72rem;text-transform:uppercase;letter-spacing:.18em;font-weight:700}
+    .navbar-custom{
+      border-radius:0 0 24px 24px; margin:0 12px; margin-top:12px;
+      background:linear-gradient(180deg, rgba(255,255,255,.16), rgba(255,255,255,.08));
+    }
     .view{display:none}
-    .view.active{display:block}
-    .monospace{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-    .ledger-row small{display:block;color:#64748b}
-    #login-wrapper{min-height:100vh;background:linear-gradient(135deg,#0a2540,#1e3a5f);}
-    .section-label{font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;color:#64748b;font-weight:700}
+    .view.active{display:block;animation:fadeIn .24s ease}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+    .tile{cursor:pointer;transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease}
+    .tile:hover{transform:translateY(-4px) scale(1.01);border-color:rgba(255,255,255,.34);box-shadow:0 22px 45px rgba(0,0,0,.22)}
+    .tile .accent-line{height:4px;border-radius:999px;background:linear-gradient(90deg, rgba(255,255,255,.7), rgba(255,255,255,.15));margin-bottom:1rem}
+    .metric{font-size:2rem;font-weight:800;letter-spacing:-.03em}
+    .metric.success{color:#b7ffd6}
+    .metric.info{color:#bfe8ff}
+    .metric.danger{color:#ffd0d6}
+    .btn{border-radius:16px;border-width:1px}
+    .btn-primary{background:linear-gradient(135deg, rgba(255,255,255,.28), rgba(110,168,255,.22));border-color:rgba(255,255,255,.26)}
+    .btn-primary:hover,.btn-dark:hover,.btn-outline-light:hover,.btn-outline-danger:hover,.btn-outline-primary:hover{transform:translateY(-1px)}
+    .btn-dark,.btn-outline-primary,.btn-outline-danger,.btn-outline-light,.btn-secondary{
+      background:rgba(255,255,255,.08); border-color:rgba(255,255,255,.2); color:var(--text);
+    }
+    .btn-light{background:rgba(255,255,255,.18); border-color:rgba(255,255,255,.25); color:var(--text);}
+    .form-control,.form-select{color:var(--text); border-radius:18px; padding:.82rem 1rem;}
+    .form-control::placeholder{color:rgba(232,241,255,.55)}
+    .form-control:focus,.form-select:focus{
+      color:var(--text); background:rgba(255,255,255,.12); border-color:rgba(255,255,255,.32); box-shadow:0 0 0 .18rem rgba(174,215,255,.14);
+    }
+    .form-label{color:var(--muted);font-weight:600}
+    .table{color:var(--text)}
+    .table thead th{border-color:rgba(255,255,255,.12);font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em}
+    .table td{border-color:rgba(255,255,255,.08)}
+    .table-hover tbody tr:hover{background:rgba(255,255,255,.06)}
+    .list-group-item{color:var(--text);border-color:rgba(255,255,255,.08)!important;padding:1rem 0;background:transparent;box-shadow:none;backdrop-filter:none}
+    .badge-soft{display:inline-flex;align-items:center;gap:.45rem;padding:.5rem .75rem;border-radius:999px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.14);font-size:.8rem;color:var(--text)}
+    .hero-login{max-width:460px;width:100%}
+    .login-card{padding:2rem 2rem 1.75rem;border-radius:32px}
+    .modal-content{border-radius:28px;color:var(--text)}
+    .modal-header,.modal-footer{border-color:rgba(255,255,255,.08)}
+    .modal-backdrop.show{opacity:.5}
+    .action-stack{display:flex;gap:.4rem;flex-wrap:wrap}
+    @media (max-width: 767px){
+      .navbar-custom{margin:0;border-radius:0 0 20px 20px}
+      .login-card{padding:1.35rem}
+      .metric{font-size:1.6rem}
+    }
   </style>
 </head>
 <body>
-  <div id="toast-container" class="position-fixed top-0 end-0 p-3" style="z-index:1080"></div>
+  <div class="app-shell">
+    <div id="toast-container" class="position-fixed top-0 end-0 p-3" style="z-index:1080"></div>
 
-  <div id="login-wrapper" class="d-flex align-items-center justify-content-center p-3">
-    <div class="card hfc-card p-4 p-md-5" style="max-width:420px;width:100%;">
-      <div class="text-center mb-4">
-        <h2 class="fw-bold mb-1" style="color:var(--hfc-navy)"><i class="fa-solid fa-building-columns me-2"></i>Home Financial Center</h2>
-        <div class="text-muted">Secure account console</div>
+    <div id="login-wrapper" class="d-flex align-items-center justify-content-center p-3">
+      <div class="hero-login glass login-card">
+        <div class="text-center mb-4">
+          <h1 class="fw-bold mb-2">Home Financial Center</h1>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Username</label>
+          <input id="login-user" type="text" class="form-control form-control-lg" placeholder="username">
+        </div>
+        <div class="mb-4">
+          <label class="form-label">PIN</label>
+          <input id="login-pin" type="password" maxlength="8" class="form-control form-control-lg" placeholder="••••">
+        </div>
+        <button id="login-btn" class="btn btn-primary btn-lg w-100">Authorize Session</button>
+        <div id="login-err" class="alert alert-danger mt-3 d-none mb-0"></div>
       </div>
-      <div class="mb-3">
-        <label class="section-label mb-2">Username</label>
-        <input id="login-user" type="text" class="form-control form-control-lg" placeholder="username">
-      </div>
-      <div class="mb-3">
-        <label class="section-label mb-2">PIN</label>
-        <input id="login-pin" type="password" maxlength="8" class="form-control form-control-lg" placeholder="••••">
-      </div>
-      <button id="login-btn" class="btn btn-primary btn-lg w-100">Authorize Session</button>
-      <div id="login-err" class="alert alert-danger mt-3 d-none mb-0"></div>
-      <div class="small text-muted mt-3"><span class="monospace"></span></div>
     </div>
-  </div>
 
-  <div id="app-wrapper" style="display:none;">
-    <nav class="navbar navbar-expand-lg navbar-custom sticky-top py-3">
-      <div class="container-fluid px-4">
-        <span class="navbar-brand fw-bold" style="color:var(--hfc-navy)"><i class="fa-solid fa-building-columns me-2"></i>HFC Billing</span>
-        <div class="d-flex align-items-center gap-3">
-          <div class="text-muted small" id="session-user-label"></div>
-          <div class="fw-bold" id="clockTime">--:--:--</div>
-          <button class="btn btn-outline-danger btn-sm" id="logout-btn">Sign Out</button>
-        </div>
-      </div>
-    </nav>
-
-    <main class="container py-4">
-      <div id="view-admin" class="view">
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
-          <div>
-            <h2 class="fw-bold mb-1">Administrative Ledger</h2>
-            <div class="text-muted">Manage clients, balances, and bills</div>
-          </div>
-          <div class="d-flex gap-2">
-            <button class="btn btn-dark" id="open-create-client-modal"><i class="fa-solid fa-user-plus me-2"></i>New Client</button>
-            <button class="btn btn-primary" id="open-create-bill-modal-admin"><i class="fa-solid fa-file-invoice-dollar me-2"></i>Record Bill</button>
+    <div id="app-wrapper" style="display:none;">
+      <nav class="navbar navbar-expand-lg navbar-custom sticky-top py-3">
+        <div class="container-fluid px-4">
+          <span class="navbar-brand fw-bold mb-0 text-white"><i class="fa-solid fa-building-columns me-2"></i>HFC Billing</span>
+          <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+            <div class="badge-soft"><i class="fa-regular fa-user"></i><span id="session-user-label">Session</span></div>
+            <div class="badge-soft"><i class="fa-regular fa-clock"></i><span id="clockTime">--:--:--</span></div>
+            <button class="btn btn-outline-danger btn-sm" id="logout-btn">Sign Out</button>
           </div>
         </div>
+      </nav>
 
-        <div class="row g-3 mb-4">
-          <div class="col-md-4">
-            <div class="card hfc-card p-4 tile" data-open-window="admin_global_cash">
-              <div class="section-label">Associated Home Fund</div>
-              <h2 class="mt-2 mb-0" id="admin-total-cash">$0.00</h2>
+      <main class="container py-4">
+        <div id="view-admin" class="view">
+          <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+            <div>
+              <div class="section-label mb-2">Administrative Console</div>
+              <h2 class="fw-bold mb-1">Master Ledger</h2>
+              <div class="text-muted">Create clients, move cash, record bills, and launch dedicated account windows.</div>
+            </div>
+            <div class="action-stack">
+              <button class="btn btn-dark" id="open-create-client-modal"><i class="fa-solid fa-user-plus me-2"></i>New Client</button>
+              <button class="btn btn-primary" id="open-deposit-modal"><i class="fa-solid fa-money-bill-wave me-2"></i>Deposit</button>
+              <button class="btn btn-outline-light" id="open-create-bill-modal-admin"><i class="fa-solid fa-file-invoice-dollar me-2"></i>Record Bill</button>
+              <button class="btn btn-outline-light" id="open-split-bill-modal"><i class="fa-solid fa-arrows-split-up-and-left me-2"></i>Split Bill</button>
             </div>
           </div>
-          <div class="col-md-4">
-            <div class="card hfc-card p-4 tile" data-open-window="admin_global_staging">
-              <div class="section-label">Global Bill Staging</div>
-              <h2 class="mt-2 mb-0" id="admin-total-staging">$0.00</h2>
+
+          <div class="row g-3 mb-4">
+            <div class="col-md-4">
+              <div class="card hfc-card p-4 tile" data-open-window="admin_global_cash">
+                <div class="accent-line"></div>
+                <div class="section-label">Associated Home Fund</div>
+                <div class="metric success mt-2" id="admin-total-cash">$0.00</div>
+                <div class="text-muted mt-2">Total checking balances system-wide</div>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="card hfc-card p-4 tile" data-open-window="admin_global_staging">
+                <div class="accent-line"></div>
+                <div class="section-label">Global Bill Staging</div>
+                <div class="metric info mt-2" id="admin-total-staging">$0.00</div>
+                <div class="text-muted mt-2">Reserved funds set aside for bills</div>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="card hfc-card p-4 tile" data-open-window="admin_open_bills">
+                <div class="accent-line"></div>
+                <div class="section-label">Open Bills</div>
+                <div class="metric danger mt-2" id="admin-open-bills-total">$0.00</div>
+                <div class="text-muted mt-2">System-wide unpaid invoice total</div>
+              </div>
             </div>
           </div>
-          <div class="col-md-4">
-            <div class="card hfc-card p-4 tile" data-open-window="admin_open_bills">
-              <div class="section-label">Open Bills</div>
-              <h2 class="mt-2 mb-0" id="admin-open-bills-total">$0.00</h2>
+
+          <div class="card hfc-card mb-4">
+            <div class="card-header bg-transparent border-0 pt-4 px-4 d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <div>
+                <div class="section-label mb-1">Clients</div>
+                <h5 class="mb-0">Account Registry</h5>
+              </div>
+              <div class="small-note">Each client row includes launch, deposit, and pay-bill actions.</div>
+            </div>
+            <div class="table-responsive px-4 pb-4">
+              <table class="table table-hover align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>Client</th>
+                    <th>Checking</th>
+                    <th>Staging</th>
+                    <th>Open Bills</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="adminUsersBody"></tbody>
+              </table>
             </div>
           </div>
-        </div>
 
-        <div class="card hfc-card mb-4">
-          <div class="card-header bg-white border-0 pt-4 px-4">
-            <h5 class="mb-0">Client Accounts</h5>
-          </div>
-          <div class="table-responsive px-4 pb-4">
-            <table class="table align-middle mb-0">
-              <thead>
-                <tr>
-                  <th>Client</th>
-                  <th>Checking</th>
-                  <th>Staging</th>
-                  <th>Open Bills</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="adminUsersBody"></tbody>
-            </table>
-          </div>
-        </div>
-
-        <div class="card hfc-card">
-          <div class="card-header bg-white border-0 pt-4 px-4">
-            <h5 class="mb-0">Latest System Activity</h5>
-          </div>
-          <div class="px-4 pb-4">
-            <div id="admin-ledger-feed" class="list-group list-group-flush"></div>
-          </div>
-        </div>
-      </div>
-
-      <div id="view-client" class="view">
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
-          <div>
-            <h2 class="fw-bold mb-1" id="client-welcome-name">Welcome</h2>
-            <div class="text-muted">Open any tile to view the full account window</div>
-          </div>
-          <div class="d-flex gap-2">
-            <button class="btn btn-outline-primary" id="open-transfer-modal"><i class="fa-solid fa-right-left me-2"></i>Transfer</button>
-            <button class="btn btn-primary" id="open-create-bill-modal-client"><i class="fa-solid fa-file-invoice-dollar me-2"></i>Add Bill</button>
-          </div>
-        </div>
-
-        <div class="row g-3 mb-4">
-          <div class="col-md-4">
-            <div class="card hfc-card p-4 tile" data-open-window="checking">
-              <div class="section-label">Checking</div>
-              <h2 class="mt-2 mb-2 text-success" id="dash-personal-bal">$0.00</h2>
-              <div class="text-muted">Deposits and outgoing transfers</div>
+          <div class="card hfc-card">
+            <div class="card-header bg-transparent border-0 pt-4 px-4">
+              <div class="section-label mb-1">Ledger</div>
+              <h5 class="mb-0">Latest System Activity</h5>
             </div>
-          </div>
-          <div class="col-md-4">
-            <div class="card hfc-card p-4 tile" data-open-window="staging">
-              <div class="section-label">Bill Staging</div>
-              <h2 class="mt-2 mb-2 text-info" id="dash-staging-bal">$0.00</h2>
-              <div class="text-muted">Funds reserved for bills</div>
-            </div>
-          </div>
-          <div class="col-md-4">
-            <div class="card hfc-card p-4 tile" data-open-window="bills">
-              <div class="section-label">Total Due</div>
-              <h2 class="mt-2 mb-2 text-danger" id="client-total-due">$0.00</h2>
-              <div class="text-muted">Open invoices and payment status</div>
+            <div class="px-4 pb-4">
+              <div id="admin-ledger-feed" class="list-group list-group-flush"></div>
             </div>
           </div>
         </div>
 
-        <div class="card hfc-card">
-          <div class="card-header bg-white border-0 pt-4 px-4">
-            <h5 class="mb-0">Recent Ledger Activity</h5>
+        <div id="view-client" class="view">
+          <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+            <div>
+              <div class="section-label mb-2">Client Dashboard</div>
+              <h2 class="fw-bold mb-1" id="client-welcome-name">Welcome</h2>
+              <div class="text-muted">Tap any tile to open a dedicated account window with full detail.</div>
+            </div>
+            <div class="action-stack">
+              <button class="btn btn-outline-primary" id="open-transfer-modal"><i class="fa-solid fa-right-left me-2"></i>Transfer</button>
+              <button class="btn btn-primary" id="open-create-bill-modal-client"><i class="fa-solid fa-file-invoice-dollar me-2"></i>Add Bill</button>
+              <button class="btn btn-outline-light" id="open-pay-bill-modal"><i class="fa-solid fa-circle-check me-2"></i>Pay Bill</button>
+            </div>
           </div>
-          <div class="px-4 pb-4">
-            <div id="client-ledger-feed" class="list-group list-group-flush"></div>
+
+          <div class="row g-3 mb-4">
+            <div class="col-md-4">
+              <div class="card hfc-card p-4 tile" data-open-window="checking">
+                <div class="accent-line"></div>
+                <div class="section-label">Checking</div>
+                <div class="metric success mt-2" id="dash-personal-bal">$0.00</div>
+                <div class="text-muted mt-2">Deposits and outgoing transfers</div>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="card hfc-card p-4 tile" data-open-window="staging">
+                <div class="accent-line"></div>
+                <div class="section-label">Bill Staging</div>
+                <div class="metric info mt-2" id="dash-staging-bal">$0.00</div>
+                <div class="text-muted mt-2">Reserved funds ready for bill payment</div>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="card hfc-card p-4 tile" data-open-window="bills">
+                <div class="accent-line"></div>
+                <div class="section-label">Total Due</div>
+                <div class="metric danger mt-2" id="client-total-due">$0.00</div>
+                <div class="text-muted mt-2">Open invoices and payment status</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card hfc-card">
+            <div class="card-header bg-transparent border-0 pt-4 px-4">
+              <div class="section-label mb-1">Ledger</div>
+              <h5 class="mb-0">Recent Activity</h5>
+            </div>
+            <div class="px-4 pb-4">
+              <div id="client-ledger-feed" class="list-group list-group-flush"></div>
+            </div>
           </div>
         </div>
-      </div>
-    </main>
+      </main>
+    </div>
   </div>
 
   <div class="modal fade" id="clientModal" tabindex="-1" aria-hidden="true">
@@ -178,17 +263,17 @@
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title">Create Client</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
-          <div class="mb-3"><label class="form-label">Username</label><input id="new-client-username" class="form-control"></div>
-          <div class="mb-3"><label class="form-label">Full Name</label><input id="new-client-name" class="form-control"></div>
-          <div class="mb-3"><label class="form-label">PIN</label><input id="new-client-pin" class="form-control" maxlength="8"></div>
+          <div class="mb-3"><label class="form-label">Username</label><input id="new-client-username" class="form-control" placeholder="jsmith"></div>
+          <div class="mb-3"><label class="form-label">Full Name</label><input id="new-client-name" class="form-control" placeholder="John Smith"></div>
+          <div class="mb-3"><label class="form-label">PIN</label><input id="new-client-pin" class="form-control" maxlength="8" placeholder="1234"></div>
           <div class="mb-0"><label class="form-label">Opening Deposit</label><input id="new-client-opening" class="form-control" value="0" type="number" step="0.01" min="0"></div>
         </div>
         <div class="modal-footer">
           <button class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
-          <button class="btn btn-primary" id="save-client-btn">Create</button>
+          <button class="btn btn-primary" id="save-client-btn">Create Client</button>
         </div>
       </div>
     </div>
@@ -199,11 +284,11 @@
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title">Record Bill</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
           <div class="mb-3"><label class="form-label">Client</label><select id="bill-user" class="form-select"></select></div>
-          <div class="mb-3"><label class="form-label">Bill Name</label><input id="bill-name" class="form-control"></div>
+          <div class="mb-3"><label class="form-label">Bill Name</label><input id="bill-name" class="form-control" placeholder="Electric Bill"></div>
           <div class="mb-3"><label class="form-label">Amount</label><input id="bill-amount" class="form-control" type="number" step="0.01" min="0.01"></div>
           <div class="mb-0"><label class="form-label">Due Date</label><input id="bill-due-date" class="form-control" type="date"></div>
         </div>
@@ -215,15 +300,38 @@
     </div>
   </div>
 
+  <div class="modal fade" id="splitBillModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Split Bill Among Clients</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Select Bill to Split</label>
+            <select id="split-bill-select" class="form-select"></select>
+          </div>
+          <div class="small text-muted">This will automatically divide the selected bill equally among all client accounts and close the original bill.</div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-primary" id="confirm-split-bill-btn">Split Bill</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="modal fade" id="transferModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title">Transfer Funds</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
-          <div class="mb-3"><label class="form-label">Direction</label>
+          <div class="mb-3">
+            <label class="form-label">Direction</label>
             <select id="transfer-direction" class="form-select">
               <option value="personal_to_staging">Checking → Staging</option>
               <option value="staging_to_personal">Staging → Checking</option>
@@ -234,6 +342,45 @@
         <div class="modal-footer">
           <button class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
           <button class="btn btn-primary" id="save-transfer-btn">Transfer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="depositModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Admin Deposit</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3"><label class="form-label">Client</label><select id="deposit-user" class="form-select"></select></div>
+          <div class="mb-3"><label class="form-label">Amount</label><input id="deposit-amount" class="form-control" type="number" min="0.01" step="0.01"></div>
+          <div class="mb-0"><label class="form-label">Memo</label><input id="deposit-memo" class="form-control" placeholder="Opening deposit or paycheck"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-primary" id="save-deposit-btn">Post Deposit</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="payBillModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Pay Bill From Staging</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3"><label class="form-label">Bill</label><select id="pay-bill-select" class="form-select"></select></div>
+          <div class="small text-muted">Only open bills for the active client are shown. Payment draws from the staging balance.</div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-primary" id="confirm-pay-bill-btn">Pay Bill</button>
         </div>
       </div>
     </div>
