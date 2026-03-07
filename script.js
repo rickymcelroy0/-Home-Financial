@@ -98,9 +98,9 @@ function authenticateUser() {
   setSession(rawUser);
   clearLoginError();
 
-  // FIXED: Using Bootstrap class logic for completely bulletproof toggling
   $('login-pin').value = '';
   $('login-wrapper').classList.add('d-none');
+  $('login-wrapper').classList.remove('d-flex');
   $('app-wrapper').classList.remove('d-none');
 
   renderAll();
@@ -112,9 +112,9 @@ function logoutUser() {
   currentUser = null;
   clearSession();
 
-  // FIXED: Restoring d-none / d-flex classes securely on logout
   $('app-wrapper').classList.add('d-none');
   $('login-wrapper').classList.remove('d-none');
+  $('login-wrapper').classList.add('d-flex');
 
   $('login-user').value = '';
   $('login-pin').value = '';
@@ -130,8 +130,15 @@ function renderView() {
   document.querySelectorAll('.view').forEach((v) => v.classList.remove('active'));
   if (!currentUser) return;
   $('session-user-label').textContent = `${users[currentUser]?.name || currentUser} · ${users[currentUser]?.role || ''}`;
-  if (isAdmin()) $('view-admin').classList.add('active');
-  else $('view-client').classList.add('active');
+
+  // NEW: Show DB Button for Admin, hide for Client
+  if (isAdmin()) {
+    $('view-admin').classList.add('active');
+    $('admin-db-link')?.classList.remove('d-none');
+  } else {
+    $('view-client').classList.add('active');
+    $('admin-db-link')?.classList.add('d-none');
+  }
 }
 
 function ledgerRowHTML(item) {
@@ -177,8 +184,6 @@ function coverageText(userId) {
   const userBals = balances[userId] || { staging: 0 };
   const sharedDue = openBillsForUser(userId).reduce((s, [_, b]) => s + number(b.amount), 0);
   const privateDue = openPrivateBillsForUser(userId).reduce((s, [_, b]) => s + number(b.amount), 0);
-
-  // FIXED: Math now subtracts BOTH shared and private bills from the vault total
   return money(number(userBals.staging) - (sharedDue + privateDue));
 }
 
@@ -210,7 +215,6 @@ function renderAdmin() {
     </tr>`;
   }).join('') || `<tr><td colspan="5" class="muted">No client accounts yet.</td></tr>`;
 
-  // FIXED: Added filter to hide 'private_bill_created' and 'private_bill_paid' from the admin's global ledger!
   const publicLedger = Object.values(ledger).filter(x => x.type !== 'private_bill_created' && x.type !== 'private_bill_paid');
   $('admin-ledger-feed').innerHTML = sortNewest(publicLedger).slice(0, 10).map(ledgerRowHTML).join('') || `<div class="muted">No activity yet.</div>`;
 
@@ -459,12 +463,12 @@ function initModals() {
   treasuryFundModal = new bootstrap.Modal($('treasuryFundModal'));
 }
 
-// FIXED: Session restore now also uses exact class toggling
 function attemptSessionRestore() {
   const saved = localStorage.getItem(SESSION_KEY);
   if (saved && users[saved]?.status === 'active') {
     currentUser = saved;
     $('login-wrapper').classList.add('d-none');
+    $('login-wrapper').classList.remove('d-flex');
     $('app-wrapper').classList.remove('d-none');
   }
 }

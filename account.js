@@ -18,15 +18,19 @@ let users = {}, balances = {}, bills = {}, privateBills = {}, ledger = {}, syste
 const money = (n) => new Intl.NumberFormat('en-US', { style:'currency', currency:'USD' }).format(Number(n || 0));
 const number = (n) => Number(Number(n || 0).toFixed(2));
 const sortNewest = (arr) => [...arr].sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-const ledgerItemsForUser = (uid) => sortNewest(Object.values(ledger).filter((x) => x.userId === uid));
-const openBillsForUser = (uid) => Object.entries(bills).filter(([_,b]) => b.userId === uid && b.status === 'open');
-const paidBillsForUser = (uid) => Object.entries(bills).filter(([_,b]) => b.userId === uid && b.status === 'paid');
-const openPrivateBillsForUser = (uid) => Object.entries(privateBills[uid] || {}).filter(([_,b]) => b.status === 'open');
-const paidPrivateBillsForUser = (uid) => Object.entries(privateBills[uid] || {}).filter(([_,b]) => b.status === 'paid');
 const isAdmin = () => users[sessionUser]?.role === 'admin';
 
-// FIXED: Protect private ledger items from the admin
+// Protect private ledger items from the admin
+const ledgerItemsForUser = (uid) => sortNewest(Object.values(ledger).filter((x) => x.userId === uid && (!isAdmin() || !x.isPrivate)));
 const publicLedger = () => Object.values(ledger).filter(x => x.type !== 'private_bill_created' && x.type !== 'private_bill_paid');
+
+// Filter out private bills if an admin is looking
+const visibleBills = () => Object.entries(bills).filter(([_, b]) => !isAdmin() || !b.isPrivate);
+const openBillsForUser = (uid) => visibleBills().filter(([_, b]) => b.userId === uid && b.status === 'open');
+const paidBillsForUser = (uid) => visibleBills().filter(([_, b]) => b.userId === uid && b.status === 'paid');
+
+const openPrivateBillsForUser = (uid) => Object.entries(privateBills[uid] || {}).filter(([_,b]) => b.status === 'open');
+const paidPrivateBillsForUser = (uid) => Object.entries(privateBills[uid] || {}).filter(([_,b]) => b.status === 'paid');
 
 function renderSummary(cards){
   document.getElementById('summary-row').innerHTML = cards.map((card) => `
@@ -42,8 +46,14 @@ function renderLedger(items){
   if (!items.length) { pane.innerHTML = '<div class="text-muted">No activity yet.</div>'; return; }
   pane.innerHTML = items.slice(0,20).map((item) => `
   <div class="list-row">
-  <div><div class="fw-semibold">${item.title || 'Activity'}</div><div class="text-muted small">${item.description || ''}</div></div>
-  <div class="text-end"><div class="fw-semibold">${item.amount != null ? money(item.amount) : ''}</div><div class="text-muted small">${new Date(item.createdAt || Date.now()).toLocaleString()}</div></div>
+  <div>
+  <div class="fw-semibold">${item.title || 'Activity'} ${item.isPrivate ? '<span class="private-badge ms-2"><i class="fa-solid fa-lock"></i></span>' : ''}</div>
+  <div class="text-muted small">${item.description || ''}</div>
+  </div>
+  <div class="text-end">
+  <div class="fw-semibold">${item.amount != null ? money(item.amount) : ''}</div>
+  <div class="text-muted small">${new Date(item.createdAt || Date.now()).toLocaleString()}</div>
+  </div>
   </div>`).join('');
 }
 function renderTable(headers, rows){
@@ -78,7 +88,7 @@ async function payPrivateBill(billId){
   const amount = number(bill.amount);
   if (!await debitBillVault(userId, amount)) return alert('Not enough money in the bill vault.');
   await db.ref(`privateBills/${userId}/${billId}`).update({ status:'paid', paidAt:new Date().toISOString() });
-  await writeLedger({ type:'private_bill_paid', userId, amount, title:'Private bill paid', description:`${bill.name} paid from the bill vault.` });
+  await writeLedger({ type:'private_bill_paid', userId, amount, title:'Private bill paid', description:`${bill.name} paid from the bill vault.`, isPrivate: true });
 }
 window.payPrivateBill = payPrivateBill;
 
@@ -98,31 +108,38 @@ function render(){
                   { label:'Shared Bills Due', value: money(openBillsForUser(userId).reduce((s,[_,b]) => s + number(b.amount), 0)) },
                   { label:'Private Bills Due', value: money(openPrivateBillsForUser(userId).reduce((s,[_,b]) => s + number(b.amount), 0)) }
     ]);
-    detail.innerHTML = `<div class="mb-3 text-muted">Checking holds available funds before you move them into the bill vault.</div>` + renderTable(['Type','Description','Amount','When'], ledgerItemsForUser(userId).filter((x) => ['client_created','treasury_transfer','transfer'].includes(x.type)).slice(0,15).map((item) => `<tr><td>${item.title || item.type}</td><td>${item.description || ''}</td><td>${item.amount != null ? money(item.amount) : ''}</td><td>${new Date(item.createdAt || Date.now()).toLocaleString()}</td></tr>`));
+    detail.innerHTML = `<div class="mb-3 text-muted">Checking holds available funds before you move them into the bill vault.</div>` + renderTable(['Type','Description','Amount','When'], ledgerItemsForUser(userId).filter((x) => ['client_created','treasury_transfer','transfer'].includes(x.type)).slice(0,15).map((item) => `<tr><td>${item.title || item.type} ${item.isPrivate ? '<span class="private-badge ms-2"><i class="fa-solid fa-lock"></i></span>' : ''}</td><td>${item.description || ''}</td><td>${item.amount != null ? money(item.amount) : ''}</td><td>${new Date(item.createdAt || Date.now()).toLocaleString()}</td></tr>`));
     renderLedger(ledgerItemsForUser(userId));
     return;
   }
 
   if (kind === 'staging'){
     document.getElementById('window-title').textContent = `${user.name} · Bill Vault`;
-    subtitle.textContent = 'Reserved funds for shared and private bills';
+    subtitle.textContent = 'Reserved funds for shared bills';
 
     const sharedDue = openBillsForUser(userId).reduce((s,[_,b]) => s + number(b.amount), 0);
-    const privateDue = openPrivateBillsForUser(userId).reduce((s,[_,b]) => s + number(b.amount), 0);
 
     renderSummary([
       { label:'Bill Vault', value: money(userBals.staging) },
                   { label:'Shared Due', value: money(sharedDue) },
-                  { label:'Private Due', value: money(privateDue) }
+                  { label:'Coverage Delta', value: money(number(userBals.staging) - sharedDue) }
     ]);
 
-    detail.innerHTML = `<div class="mb-3 text-muted">The bill vault is the internal account used to pay bills and track bill readiness automatically.</div>` + renderTable(['Bucket','Amount'], [
-      `<tr><td>Current bill vault</td><td>${money(userBals.staging)}</td></tr>`,
-                                                                                                                                                                           `<tr><td>Shared bills total</td><td>${money(sharedDue)}</td></tr>`,
-                                                                                                                                                                           `<tr><td>Private bills total</td><td>${money(privateDue)}</td></tr>`,
-                                                                                                                                                                           `<tr><td>Coverage after all open bills</td><td>${money(number(userBals.staging) - (sharedDue + privateDue))}</td></tr>`
+    detail.innerHTML = `<div class="mb-3 text-muted">The bill vault is the internal account used to pay bills and track bill readiness automatically.</div>` + renderTable(['Bill','Due Date','Amount','Status'], openBillsForUser(userId).map(([_,b]) => `<tr><td>${b.name}</td><td>${b.dueDate || '—'}</td><td>${money(b.amount)}</td><td>${b.status}</td></tr>`));
+    renderLedger(ledgerItemsForUser(userId).filter((x) => ['transfer','bill_paid','treasury_transfer'].includes(x.type) && !x.isPrivate));
+    return;
+  }
+
+  if (kind === 'private_bills' || kind === 'private_vault'){
+    document.getElementById('window-title').textContent = `${user.name} · Private Bills`;
+    subtitle.textContent = 'Personal planner bills only shown to the account owner in-app';
+    renderSummary([
+      { label:'Open Private Bills', value: String(openPrivateBillsForUser(userId).length) },
+                  { label:'Open Total', value: money(openPrivateBillsForUser(userId).reduce((s,[_,b]) => s + number(b.amount), 0)) },
+                  { label:'Paid Private Bills', value: String(paidPrivateBillsForUser(userId).length) }
     ]);
-    renderLedger(ledgerItemsForUser(userId).filter((x) => ['transfer','bill_paid','private_bill_paid','treasury_transfer'].includes(x.type)));
+    detail.innerHTML = renderTable(['Bill','Category','Due','Amount','Status','Action'], sortNewest(Object.entries(privateBills[userId] || {})).map(([billId,b]) => `<tr><td>${b.name} <span class="private-badge ms-2"><i class="fa-solid fa-lock"></i> Private</span></td><td>${b.category || 'Personal'}</td><td>${b.dueDate || '—'}</td><td>${money(b.amount)}</td><td>${b.status}</td><td>${b.status === 'open' && sessionUser === userId ? `<button class="btn btn-sm btn-success" onclick="payPrivateBill('${billId}')">Pay</button>` : ''}</td></tr>`));
+    renderLedger(ledgerItemsForUser(userId).filter((x) => ['private_bill_created','private_bill_paid'].includes(x.type)));
     return;
   }
 
@@ -134,21 +151,8 @@ function render(){
                   { label:'Open Total', value: money(openBillsForUser(userId).reduce((s,[_,b]) => s + number(b.amount), 0)) },
                   { label:'Paid Shared Bills', value: String(paidBillsForUser(userId).length) }
     ]);
-    detail.innerHTML = renderTable(['Bill','Due','Amount','Status','Action'], sortNewest(Object.entries(bills).filter(([_,b]) => b.userId === userId)).map(([billId,b]) => `<tr><td>${b.name}</td><td>${b.dueDate || '—'}</td><td>${money(b.amount)}</td><td>${b.status}</td><td>${b.status === 'open' && (isAdmin() || sessionUser === userId) ? `<button class="btn btn-sm btn-primary" onclick="payBill('${billId}')">Pay</button>` : ''}</td></tr>`));
-    renderLedger(ledgerItemsForUser(userId).filter((x) => ['bill_created','bill_paid'].includes(x.type)));
-    return;
-  }
-
-  if (kind === 'private_bills'){
-    document.getElementById('window-title').textContent = `${user.name} · Private Bills`;
-    subtitle.textContent = 'Personal planner bills only shown to the account owner in-app';
-    renderSummary([
-      { label:'Open Private Bills', value: String(openPrivateBillsForUser(userId).length) },
-                  { label:'Open Total', value: money(openPrivateBillsForUser(userId).reduce((s,[_,b]) => s + number(b.amount), 0)) },
-                  { label:'Paid Private Bills', value: String(paidPrivateBillsForUser(userId).length) }
-    ]);
-    detail.innerHTML = renderTable(['Bill','Category','Due','Amount','Status','Action'], sortNewest(Object.entries(privateBills[userId] || {})).map(([billId,b]) => `<tr><td>${b.name}</td><td>${b.category || 'Personal'}</td><td>${b.dueDate || '—'}</td><td>${money(b.amount)}</td><td>${b.status}</td><td>${b.status === 'open' && sessionUser === userId ? `<button class="btn btn-sm btn-success" onclick="payPrivateBill('${billId}')">Pay</button>` : ''}</td></tr>`));
-    renderLedger(ledgerItemsForUser(userId).filter((x) => ['private_bill_created','private_bill_paid'].includes(x.type)));
+    detail.innerHTML = renderTable(['Bill','Due','Amount','Status','Action'], sortNewest(visibleBills().filter(([_,b]) => b.userId === userId)).map(([billId,b]) => `<tr><td>${b.name}</td><td>${b.dueDate || '—'}</td><td>${money(b.amount)}</td><td>${b.status}</td><td>${b.status === 'open' && (isAdmin() || sessionUser === userId) ? `<button class="btn btn-sm btn-primary" onclick="payBill('${billId}')">Pay</button>` : ''}</td></tr>`));
+    renderLedger(ledgerItemsForUser(userId).filter((x) => ['bill_created','bill_paid'].includes(x.type) && !x.isPrivate));
     return;
   }
 
@@ -160,12 +164,11 @@ function render(){
                   { label:'Bill Vault', value: money(userBals.staging) },
                   { label:'Shared Bills Due', value: money(openBillsForUser(userId).reduce((s,[_,b]) => s + number(b.amount), 0)) }
     ]);
-    detail.innerHTML = `<div class="row g-3 mb-3"><div class="col-md-6"><div class="mini"><div class="label">Profile</div><div class="mt-2"><strong>${user.name}</strong><div class="text-muted">${userId}</div><div class="text-muted">${user.accountNumber || '—'}</div><div class="text-muted">Status: ${user.status}</div></div></div></div><div class="col-md-6"><div class="mini"><div class="label">Planner note</div><div class="mt-2 text-muted">Private bill details are intentionally not surfaced in admin overview windows.</div></div></div></div>` + renderTable(['Bill','Amount','Status'], sortNewest(Object.entries(bills).filter(([_,b]) => b.userId === userId)).slice(0,10).map(([_,b]) => `<tr><td>${b.name}</td><td>${money(b.amount)}</td><td>${b.status}</td></tr>`));
+    detail.innerHTML = `<div class="row g-3 mb-3"><div class="col-md-6"><div class="mini"><div class="label">Profile</div><div class="mt-2"><strong>${user.name}</strong><div class="text-muted">${userId}</div><div class="text-muted">${user.accountNumber || '—'}</div><div class="text-muted">Status: ${user.status}</div></div></div></div><div class="col-md-6"><div class="mini"><div class="label">Planner note</div><div class="mt-2 text-muted">Private bill details are intentionally not surfaced in admin overview windows.</div></div></div></div>` + renderTable(['Bill','Amount','Status'], sortNewest(visibleBills().filter(([_,b]) => b.userId === userId)).slice(0,10).map(([_,b]) => `<tr><td>${b.name}</td><td>${money(b.amount)}</td><td>${b.status}</td></tr>`));
     renderLedger(ledgerItemsForUser(userId));
     return;
   }
 
-  // FIXED: Ensure publicLedger() filters out private events from Admin windows
   if (kind === 'admin_treasury'){
     document.getElementById('window-title').textContent = 'Administrator · Treasury';
     subtitle.textContent = 'Master source account and shared bill center';
