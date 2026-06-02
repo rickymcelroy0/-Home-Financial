@@ -4,7 +4,7 @@
   "latest_build": 250,
   "channel": "beta",
   "release_date": "2026-06-02",
-  "download_url": "https://github.com/rickymcelroy0/-Home-Financial/blob/main/DynamicWeather-Beta-2.5.zip",
+  "download_url": "https://raw.githubusercontent.com/rickymcelroy0/-Home-Financial/main/DynamicWeather-Beta-2.5.zip",
   "release_notes": [
     "Redesigned Updates into a separate window instead of the giant Tools panel",
     "Updater now reads GitHub raw version.json by default",
