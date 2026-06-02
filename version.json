@@ -3,8 +3,9 @@
   "latest_version": "2.6 beta",
   "latest_build": 260,
   "channel": "beta",
-  "release_date": "06/02/2026 4:40AM",
-  "download_url": "https://raw.githubusercontent.com/rickymcelroy0/-Home-Financial/main/DynamicWeather-Beta-2.6.zip"
+  "release_date": "2026-06-02",
+  "download_url": "https://raw.githubusercontent.com/rickymcelroy0/-Home-Financial/main/DynamicWeather-Beta-2.6.zip",
+  "release_notes": [
     "Redesigned Updates into a separate window instead of the giant Tools panel",
     "Updater now reads GitHub raw version.json by default",
     "Improved installer helper for /opt/DynamicWeather and /usr/local/bin/dynamicweather",
