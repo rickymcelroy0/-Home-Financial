@@ -1,16 +1,18 @@
 {
   "app": "DynamicWeather",
-"latest_version": "2.5 beta",
-"latest_build": 250,
-  "channel": "beta-test",
+  "latest_version": "2.5 beta",
+  "latest_build": 250,
+  "channel": "beta",
   "release_date": "2026-06-02",
-  "download_url": "PASTE_YOUR_KDRIVE_ZIP_LINK_HERE",
+  "download_url": "PASTE_YOUR_GITHUB_RELEASE_ZIP_LINK_HERE",
   "release_notes": [
-    "VISIBLE TEST UPDATE: top badge now says BETA 2.3.1 • BUILD 231",
-    "Feature tabs moved into a cleaner Categories bar under the header",
-    "Added right-side arrow for Detailed 7-Day weather",
-    "Bottom forecast cards act like glass tabs and open daily details",
-    "This update is only for testing KDrive update detection and install flow"
+    "Redesigned Updates into a separate window instead of the giant Tools panel",
+    "Updater now reads GitHub raw version.json by default",
+    "Improved installer helper for /opt/DynamicWeather and /usr/local/bin/dynamicweather",
+    "Fixed Ubuntu KDE Plasma dependency leftovers",
+    "Fixed duplicate MetNo debug method issue",
+    "Fixed .png.png weather icon paths",
+    "Updated branding to Beta 2.5 Build 250"
   ],
-  "message": "DynamicWeather Beta 2.3.1 UI test update is available."
+  "message": "DynamicWeather Beta 2.5 is available."
 }
