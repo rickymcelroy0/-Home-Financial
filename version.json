@@ -1,7 +1,7 @@
 {
   "app": "DynamicWeather",
-  "latest_version": "2.3.1 beta",
-  "latest_build": 231,
+"latest_version": "2.5 beta",
+"latest_build": 250,
   "channel": "beta-test",
   "release_date": "2026-06-02",
   "download_url": "PASTE_YOUR_KDRIVE_ZIP_LINK_HERE",
